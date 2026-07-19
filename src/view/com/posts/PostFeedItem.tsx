@@ -536,6 +536,7 @@ let PostContent = ({
         compactPosts && styles.contentHiderChildCompact,
       ]}>
       <PostAlerts
+        post={post}
         modui={moderation.ui('contentList')}
         style={[a.pb_xs]}
         additionalCauses={additionalPostAlerts}
@@ -615,8 +616,9 @@ const styles = StyleSheet.create({
     width: 0,
   },
   postMetaCarousel: {
-    flex: 0,
     flexGrow: 0,
+    flexShrink: 1,
+    minWidth: 0,
   },
   alert: {
     marginTop: 6,

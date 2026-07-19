@@ -36,7 +36,7 @@ export type CommonNavigatorParams = {
   ProfileKnownFollowers: {name: string}
   ProfileSearch: {name: string} & SearchParams
   ProfileList: {name: string; rkey: string}
-  PostThread: {name: string; rkey: string}
+  PostThread: {name: string; rkey: string; view?: 'reader'}
   PostLikedBy: {name: string; rkey: string}
   PostRepostedBy: {name: string; rkey: string}
   PostQuotes: {name: string; rkey: string}
@@ -63,7 +63,6 @@ export type CommonNavigatorParams = {
   PreferencesThreads: undefined
   PreferencesExternalEmbeds: undefined
   AccessibilitySettings: undefined
-  AIPreferencesSettings: undefined
   AppearanceSettings: undefined
   AppearanceColorThemeSettings: undefined
   RunesSettings: undefined

@@ -8,11 +8,12 @@ import {useQueryClient} from '@tanstack/react-query'
 import {makeProfileLink} from '#/lib/routes/links'
 import {forceLTR} from '#/lib/strings/bidi'
 import {NON_BREAKING_SPACE} from '#/lib/strings/constants'
-import {sanitizeDisplayName} from '#/lib/strings/display-names'
+import {getAuthorPrimaryName} from '#/lib/strings/display-names'
 import {sanitizeHandle} from '#/lib/strings/handles'
 import {sanitizePronouns} from '#/lib/strings/pronouns'
 import {niceDate} from '#/lib/strings/time'
 import {useProfileShadow} from '#/state/cache/profile-shadow'
+import {useHideDisplayNames} from '#/state/preferences/hide-display-names'
 import {unstableCacheProfileView} from '#/state/queries/profile'
 import {atoms as a, platform, useTheme, web} from '#/alf'
 import {WebOnlyInlineLinkText} from '#/components/Link'
@@ -44,7 +45,11 @@ let PostMeta = (opts: PostMetaOpts): React.ReactNode => {
   const {i18n, _} = useLingui()
 
   const author = useProfileShadow(opts.author)
-  const displayName = author.displayName || author.handle
+  const hideDisplayNames = useHideDisplayNames()
+  const displayName = getAuthorPrimaryName(author, {
+    hideDisplayNames,
+    moderation: opts.moderation?.ui('displayName'),
+  })
   const handle = author.handle
   // remove dumb typing when you update the atproto api package!!
   const pronouns = (author as {pronouns?: string})?.pronouns
@@ -67,16 +72,22 @@ let PostMeta = (opts: PostMetaOpts): React.ReactNode => {
   return (
     <View
       style={[
-        IS_ANDROID ? a.flex_1 : a.flex_shrink,
+        /*
+         * Android defaults to flex_1 so the meta row fills width in the feed.
+         * In width-constrained parents (carousel cards, quote embeds) that
+         * fights the width:0 flex trick - prefer shrink instead.
+         */
+        IS_ANDROID && !opts.constrainWidth ? a.flex_1 : a.flex_shrink,
         a.flex_row,
         a.align_center,
         a.pb_xs,
         a.gap_xs,
         a.z_20,
+        opts.constrainWidth && {minWidth: 0, width: '100%'},
         opts.style,
       ]}>
       {opts.showAvatar && (
-        <View style={[a.self_center, a.mr_2xs]}>
+        <View style={[a.self_center, a.mr_2xs, a.flex_shrink_0]}>
           <PreviewableUserAvatar
             size={opts.avatarSize || 16}
             profile={author}
@@ -103,27 +114,33 @@ let PostMeta = (opts: PostMetaOpts): React.ReactNode => {
               a.flex_shrink,
               opts.constrainWidth && {flex: 1, minWidth: 0},
             ]}>
-            <MaybeLinkText
-              emoji
-              numberOfLines={1}
-              to={profileLink}
-              label={_(msg`View profile`)}
-              disableMismatchWarning
-              onPress={opts.linkDisabled ? undefined : onBeforePressAuthor}
+            {/*
+             * Wrap the name in a flex View - flex styles on Text/UITextView
+             * are unreliable on native, and without this the handle's
+             * intrinsic width wins and the name collapses to 0.
+             */}
+            <View
               style={[
-                a.text_md,
-                a.font_semi_bold,
-                t.atoms.text,
-                a.leading_tight,
-                a.flex_shrink,
+                opts.constrainWidth
+                  ? [a.flex_1, {minWidth: 0}]
+                  : a.flex_shrink,
               ]}>
-              {forceLTR(
-                sanitizeDisplayName(
-                  displayName,
-                  opts.moderation?.ui('displayName'),
-                ),
-              )}
-            </MaybeLinkText>
+              <MaybeLinkText
+                emoji
+                numberOfLines={1}
+                to={profileLink}
+                label={_(msg`View profile`)}
+                disableMismatchWarning
+                onPress={opts.linkDisabled ? undefined : onBeforePressAuthor}
+                style={[
+                  a.text_md,
+                  a.font_semi_bold,
+                  t.atoms.text,
+                  a.leading_tight,
+                ]}>
+                {forceLTR(displayName)}
+              </MaybeLinkText>
+            </View>
             <ProfileBadges
               profile={author}
               size="sm"
@@ -131,30 +148,33 @@ let PostMeta = (opts: PostMetaOpts): React.ReactNode => {
               style={[
                 a.pl_2xs,
                 a.self_center,
+                a.flex_shrink_0,
                 {
                   marginTop: platform({web: 1, ios: 0, android: -1}),
                 },
               ]}
             />
-            <MaybeLinkText
-              emoji
-              numberOfLines={1}
-              to={profileLink}
-              label={_(msg`View profile`)}
-              disableMismatchWarning
-              disableUnderline
-              onPress={opts.linkDisabled ? undefined : onBeforePressAuthor}
-              style={[
-                a.text_md,
-                t.atoms.text_contrast_medium,
-                {lineHeight: 1.17},
-                opts.narrowLayout
-                  ? a.flex_shrink
-                  : [{flexBasis: '30%'}, a.flex_grow, a.flex_shrink_0],
-                web({maxWidth: 'max-content'}),
-              ]}>
-              {NON_BREAKING_SPACE + sanitizeHandle(handle, '@')}
-            </MaybeLinkText>
+            {!hideDisplayNames && (
+              <MaybeLinkText
+                emoji
+                numberOfLines={1}
+                to={profileLink}
+                label={_(msg`View profile`)}
+                disableMismatchWarning
+                disableUnderline
+                onPress={opts.linkDisabled ? undefined : onBeforePressAuthor}
+                style={[
+                  a.text_md,
+                  t.atoms.text_contrast_medium,
+                  {lineHeight: 1.17},
+                  opts.narrowLayout
+                    ? [a.flex_shrink, {minWidth: 0}]
+                    : [{flexBasis: '30%'}, a.flex_grow, a.flex_shrink_0],
+                  web({maxWidth: 'max-content'}),
+                ]}>
+                {NON_BREAKING_SPACE + sanitizeHandle(handle, '@')}
+              </MaybeLinkText>
+            )}
             {opts.showPronouns && pronouns && (
               <WebOnlyInlineLinkText
                 emoji
@@ -190,6 +210,7 @@ let PostMeta = (opts: PostMetaOpts): React.ReactNode => {
                 a.pl_xs,
                 a.text_md,
                 a.leading_tight,
+                a.flex_shrink_0,
                 IS_ANDROID && !opts.narrowLayout && a.flex_grow,
                 a.text_right,
                 t.atoms.text_contrast_medium,
@@ -197,22 +218,18 @@ let PostMeta = (opts: PostMetaOpts): React.ReactNode => {
                   whiteSpace: 'nowrap',
                 }),
               ]}>
-              {!opts.showPronouns && (
-                <>
-                  {!IS_ANDROID && (
-                    <Text
-                      style={[
-                        a.text_md,
-                        a.leading_tight,
-                        t.atoms.text_contrast_medium,
-                      ]}
-                      accessible={false}>
-                      &middot;{' '}
-                    </Text>
-                  )}
-                  {timeElapsed}
-                </>
+              {!IS_ANDROID && (
+                <Text
+                  style={[
+                    a.text_md,
+                    a.leading_tight,
+                    t.atoms.text_contrast_medium,
+                  ]}
+                  accessible={false}>
+                  &middot;{' '}
+                </Text>
               )}
+              {timeElapsed}
             </MaybeLinkText>
           )}
         </TimeElapsed>

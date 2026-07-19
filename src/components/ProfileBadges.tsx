@@ -1,6 +1,6 @@
+import {useState} from 'react'
 import {View} from 'react-native'
-import {msg} from '@lingui/core/macro'
-import {useLingui} from '@lingui/react'
+import {useLingui} from '@lingui/react/macro'
 
 import {useProfileShadow} from '#/state/cache/profile-shadow'
 import {
@@ -57,8 +57,16 @@ export function ProfileBadges({
   const verification = useSimpleVerificationState({profile})
   const pdsLabelEnabled = usePdsLabelEnabled()
   const hideBskyPds = usePdsLabelHideBskyPds()
+
+  const isBskyHandle =
+    !!shadowed.handle &&
+    shadowed.handle.endsWith('.bsky.social')
+
+  const shouldResolvePds =
+    pdsLabelEnabled && !(hideBskyPds && isBskyHandle)
+
   const {data: pdsData, isLoading: isPdsLoading} = usePdsLabelQuery(
-    pdsLabelEnabled ? shadowed.did : undefined,
+    shouldResolvePds ? shadowed.did : undefined,
   )
   const {data: pdsFaviconUrl} = usePdsFaviconQuery(
     pdsData && !pdsData.isBsky && !pdsData.isBridged
@@ -70,13 +78,8 @@ export function ProfileBadges({
     fonts: {scaleMultiplier: alfScaleMultiplier},
   } = useAlf()
 
-  const isBskyHandle =
-    !!shadowed.handle &&
-    (shadowed.handle.endsWith('.bsky.social') ||
-      shadowed.handle === 'bsky.social')
-
   const showPdsBadge =
-    pdsLabelEnabled &&
+    shouldResolvePds &&
     (isPdsLoading || (!!pdsData && !(hideBskyPds && pdsData.isBsky)))
 
   // if nothing to show, don't render the container at all
@@ -171,8 +174,9 @@ function PdsInlineIcon({
   pdsUrl?: string
   faviconUrl?: string
 }) {
-  const {_} = useLingui()
+  const {t: l} = useLingui()
   const dialogControl = Dialog.useDialogControl()
+  const [loadDescription, setLoadDescription] = useState(false)
   const dimensions = pdsIconDimensions(size)
 
   const icon = (
@@ -202,10 +206,11 @@ function PdsInlineIcon({
   return (
     <>
       <Button
-        label={_(msg`View PDS information`)}
+        label={l`View PDS information`}
         hitSlop={20}
         onPress={evt => {
           evt.preventDefault()
+          setLoadDescription(true)
           dialogControl.open()
           if (IS_WEB) {
             ;(document.activeElement as HTMLElement | null)?.blur()
@@ -237,6 +242,7 @@ function PdsInlineIcon({
         control={dialogControl}
         pdsUrl={pdsUrl}
         faviconUrl={faviconUrl}
+        loadDescription={loadDescription}
       />
     </>
   )

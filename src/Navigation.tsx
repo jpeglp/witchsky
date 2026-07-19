@@ -30,7 +30,7 @@ import {
 } from '#/lib/hooks/useNotificationHandler'
 import {useWebScrollRestoration} from '#/lib/hooks/useWebScrollRestoration'
 import {useCallOnce} from '#/lib/once'
-import {buildStateObject} from '#/lib/routes/helpers'
+import {buildStateObject, getCurrentRoute} from '#/lib/routes/helpers'
 import {
   type AllNavigatorParams,
   type BottomTabNavigatorParams,
@@ -106,7 +106,6 @@ import {AboutSettingsScreen} from '#/screens/Settings/AboutSettings'
 import {AccessibilitySettingsScreen} from '#/screens/Settings/AccessibilitySettings'
 import {AccountSettingsScreen} from '#/screens/Settings/AccountSettings'
 import {ActivityPrivacySettingsScreen} from '#/screens/Settings/ActivityPrivacySettings'
-import {AIPreferencesSettingsScreen} from '#/screens/Settings/AIPreferencesSettings'
 import {AppearanceSettingsScreen} from '#/screens/Settings/AppearanceSettings'
 import {AppearanceColorThemeSettingsScreen} from '#/screens/Settings/AppearanceSettings/ColorThemeSettings'
 import {AppIconSettingsScreen} from '#/screens/Settings/AppIconSettings'
@@ -431,14 +430,6 @@ function commonScreens(Stack: typeof Flat, unreadCountLabel?: string) {
         }}
       />
       <Stack.Screen
-        name="AIPreferencesSettings"
-        getComponent={() => AIPreferencesSettingsScreen}
-        options={{
-          title: title(msg`AI Preferences`),
-          requireAuth: true,
-        }}
-      />
-      <Stack.Screen
         name="RunesSettings"
         getComponent={() => RunesSettingsScreen}
         options={{
@@ -489,7 +480,7 @@ function commonScreens(Stack: typeof Flat, unreadCountLabel?: string) {
       <Stack.Screen
         name="RunesInfrastructureSettings"
         getComponent={() => RunesInfrastructureSettingsScreen}
-        options={{title: title(msg`Infrastructure`), requireAuth: true}}
+        options={{title: title(msg`Infrastructure`)}}
       />
       <Stack.Screen
         name="RunesExtraSettings"
@@ -924,10 +915,7 @@ const LINKING = {
 
   getPathFromState(state: State) {
     // find the current node in the navigation tree
-    let node = state.routes[state.index || 0]
-    while (node.state?.routes && typeof node.state?.index === 'number') {
-      node = node.state?.routes[node.state?.index]
-    }
+    const node = getCurrentRoute(state)
 
     // build the path
     const route = router.matchName(node.name)

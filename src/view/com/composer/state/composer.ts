@@ -133,11 +133,6 @@ export type ComposerAction =
       type: 'add_post'
     }
   | {
-      type: 'replace_post_with_thread'
-      postId: string
-      texts: string[]
-    }
-  | {
       type: 'remove_post'
       postId: string
     }
@@ -257,49 +252,6 @@ export function composerReducer(
       return {
         ...state,
         isDirty: true,
-        thread: {
-          ...state.thread,
-          posts: nextPosts,
-        },
-      }
-    }
-    case 'replace_post_with_thread': {
-      const {postId, texts} = action
-      if (texts.length === 0) {
-        return state
-      }
-
-      const postIndex = state.thread.posts.findIndex(p => p.id === postId)
-      if (postIndex === -1) {
-        return state
-      }
-
-      const postToReplace = state.thread.posts[postIndex]
-      const replacementPosts = texts.map((text, index) =>
-        createPostDraftFromText(text, {
-          labels: index === 0 ? postToReplace.labels : [],
-          embed:
-            index === 0
-              ? postToReplace.embed
-              : {
-                  quote: undefined,
-                  media: undefined,
-                  link: undefined,
-                },
-        }),
-      )
-
-      const nextPosts = [
-        ...state.thread.posts.slice(0, postIndex),
-        ...replacementPosts,
-        ...state.thread.posts.slice(postIndex + 1),
-      ]
-
-      return {
-        ...state,
-        isDirty: true,
-        activePostIndex: postIndex,
-        mutableNeedsFocusActive: true,
         thread: {
           ...state.thread,
           posts: nextPosts,
@@ -817,33 +769,21 @@ export function createComposerState({
   }
 }
 
+const MARKDOWN_LINK_RE = /\[([^\]]+)\]\(([^)]+)\)/
+
+/**
+ * Grapheme length for the char counter. TextInput already ran
+ * detectFacetsWithoutResolution (and merged markdown facets) on `rt`, so we
+ * only re-parse when markdown link syntax is present — that path rewrites
+ * `[text](url)` to display text before measuring.
+ */
 function getShortenedLength(rt: RichText) {
+  if (!MARKDOWN_LINK_RE.test(rt.text)) {
+    return shortenLinks(rt).graphemeLength
+  }
   const {text} = parseMarkdownLinks(rt.text)
   const newRt = new RichText({text})
   newRt.detectFacetsWithoutResolution()
   return shortenLinks(newRt).graphemeLength
 }
 
-function createPostDraftFromText(
-  text: string,
-  overrides?: {
-    id?: string
-    labels?: SelfLabel[]
-    embed?: EmbedDraft
-  },
-): PostDraft {
-  const richtext = new RichText({text})
-  richtext.detectFacetsWithoutResolution()
-
-  return {
-    id: overrides?.id ?? nanoid(),
-    richtext,
-    shortenedGraphemeLength: getShortenedLength(richtext),
-    labels: overrides?.labels ?? [],
-    embed: overrides?.embed ?? {
-      quote: undefined,
-      media: undefined,
-      link: undefined,
-    },
-  }
-}
