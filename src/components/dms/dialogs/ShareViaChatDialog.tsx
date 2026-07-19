@@ -1,0 +1,84 @@
+import {useCallback} from 'react'
+import {msg} from '@lingui/core/macro'
+import {useLingui} from '@lingui/react'
+
+import {logger} from '#/logger'
+import {useGetConvoForMembers} from '#/state/queries/messages/get-convo-for-members'
+import * as Dialog from '#/components/Dialog'
+import {SearchablePeopleList} from '#/components/dialogs/SearchablePeopleList'
+import * as Toast from '#/components/Toast'
+import {useAnalytics} from '#/analytics'
+
+export function SendViaChatDialog({
+  control,
+  onSelectChat,
+}: {
+  control: Dialog.DialogControlProps
+  onSelectChat: (chatId: string) => void
+}) {
+  return (
+    <Dialog.Outer
+      control={control}
+      testID="sendViaChatChatDialog"
+      nativeOptions={{fullHeight: true}}>
+      <Dialog.Handle />
+      <SendViaChatDialogInner control={control} onSelectChat={onSelectChat} />
+    </Dialog.Outer>
+  )
+}
+
+function SendViaChatDialogInner({
+  control,
+  onSelectChat,
+}: {
+  control: Dialog.DialogControlProps
+  onSelectChat: (chatId: string) => void
+}) {
+  const {_} = useLingui()
+  const ax = useAnalytics()
+  const {mutate: createChat} = useGetConvoForMembers({
+    onSuccess: data => {
+      onSelectChat(data.convo.id)
+
+      if (!data.convo.lastMessage) {
+        ax.metric('chat:create', {logContext: 'SendViaChatDialog'})
+      }
+      ax.metric('chat:open', {logContext: 'SendViaChatDialog'})
+    },
+    onError: error => {
+      logger.error('Failed to share post to chat', {message: error})
+      Toast.show(_(msg`An issue occurred while trying to open the chat`), {
+        type: 'error',
+      })
+    },
+  })
+
+  const onSelectExistingChat = useCallback(
+    (chatId: string) => {
+      control.close(() => onSelectChat(chatId))
+    },
+    [control, onSelectChat],
+  )
+
+  const onCreateChat = useCallback(
+    (did: string) => {
+      control.close(() => createChat([did]))
+    },
+    [control, createChat],
+  )
+
+  return (
+    <SearchablePeopleList
+      title={_(msg`Send post to...`)}
+      onSelectChat={chat => {
+        if (chat.kind === 'user') {
+          onCreateChat(chat.did)
+        } else {
+          onSelectExistingChat(chat.id)
+        }
+      }}
+      showRecentConvos
+      sortByMessageDeclaration
+    />
+  )
+}

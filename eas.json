@@ -1,0 +1,109 @@
+{
+  "cli": {
+    "version": ">=18",
+    "promptToConfigurePushNotifications": false,
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "base": {
+      "node": "24.15.0"
+    },
+      "development": {
+        "extends": "base",
+        "developmentClient": true,
+        "distribution": "internal",
+        "channel": "development",
+      "ios": {
+        "simulator": true,
+        "resourceClass": "large"
+        },
+        "env": {
+          "EXPO_PUBLIC_ENV": "production",
+          "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        }
+      },
+      "preview": {
+        "extends": "base",
+        "distribution": "internal",
+        "channel": "production",
+      "ios": {
+        "resourceClass": "large"
+        },
+        "env": {
+          "EXPO_PUBLIC_ENV": "production",
+          "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        }
+      },
+      "production": {
+        "extends": "base",
+      "ios": {
+        "resourceClass": "large",
+        "autoIncrement": true,
+        "buildArtifactPaths": ["ios/build/*"]
+      },
+      "android": {
+        "autoIncrement": true
+      },
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_ENV": "production",
+          "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      }
+    },
+    "testflight": {
+      "extends": "base",
+      "ios": {
+        "autoIncrement": true,
+        "buildArtifactPaths": ["ios/build/*"]
+      },
+      "android": {
+        "autoIncrement": true
+      },
+      "channel": "testflight",
+      "env": {
+        "EXPO_PUBLIC_ENV": "testflight",
+          "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+      }
+    },
+    "testflight-android": {
+      "extends": "base",
+      "ios": {
+        "autoIncrement": true,
+        "buildArtifactPaths": ["ios/build/*"]
+      },
+      "android": {
+        "autoIncrement": true
+      },
+        "channel": "testflight",
+        "env": {
+          "EXPO_PUBLIC_ENV": "testflight",
+          "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        }
+      },
+      "sideload-android": {
+        "extends": "production",
+        "env": {
+          "EXPO_PUBLIC_ENV": "production",
+          "SENTRY_DISABLE_AUTO_UPLOAD": "true"
+        },
+        "android": {
+          "buildType": "apk"
+        }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "ascAppId": "6444370199"
+      },
+      "android": {
+        "track": "production"
+      }
+    },
+    "testflight-android": {
+      "android": {
+        "track": "internal"
+      }
+    }
+  }
+}

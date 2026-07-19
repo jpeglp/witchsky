@@ -1,0 +1,33 @@
+import {useCallback} from 'react'
+import {isDid} from '@atproto/api'
+
+import {device, useStorage} from '#/storage'
+
+export function useCustomAppViewDid() {
+  const [customAppViewDid = undefined, setCustomAppViewDid] = useStorage(
+    device,
+    ['customAppViewDid'],
+  )
+
+  return [customAppViewDid, setCustomAppViewDid] as const
+}
+
+export function useSetCustomAppViewDid() {
+  const [, setCustomAppViewDid] = useCustomAppViewDid()
+
+  return useCallback(
+    (customAppViewDid: string | undefined) => {
+      setCustomAppViewDid(customAppViewDid)
+    },
+    [setCustomAppViewDid],
+  )
+}
+
+export function readCustomAppViewDidUri() {
+  const maybeDid = device.get(['customAppViewDid'])
+  if (!maybeDid || !isDid(maybeDid)) {
+    return undefined
+  }
+
+  return `${maybeDid}#bsky_appview`
+}

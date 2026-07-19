@@ -1,0 +1,84 @@
+import {type ComponentType} from 'react'
+import {
+  Pressable,
+  type PressableProps,
+  type StyleProp,
+  StyleSheet,
+  type TextStyle,
+  View,
+} from 'react-native'
+
+import {HITSLOP_10} from '#/lib/constants'
+import {useEnableSquareButtons} from '#/state/preferences/enable-square-buttons'
+import {atoms as a} from '#/alf'
+import {type Props as IconProps} from '#/components/icons/common'
+
+type Props = {
+  icon: ComponentType<IconProps>
+  iconStyle?: StyleProp<TextStyle>
+  label: string
+  onPress?: PressableProps['onPress']
+  testID?: string
+} & Omit<
+  PressableProps,
+  | 'onPress'
+  | 'style'
+  | 'testID'
+  | 'accessibilityRole'
+  | 'accessibilityLabel'
+  | 'accessibilityHint'
+>
+
+const SIZE = 44
+const ICON = 24
+
+export function CircleChromeButton({
+  icon: Icon,
+  iconStyle,
+  label,
+  onPress,
+  testID,
+  ...rest
+}: Props) {
+  const enableSquareButtons = useEnableSquareButtons()
+
+  return (
+    <Pressable
+      {...rest}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint=""
+      hitSlop={HITSLOP_10}
+      onPress={onPress}
+      testID={testID}
+      style={({pressed}) => [
+        styles.root,
+        enableSquareButtons ? a.rounded_sm : a.rounded_full,
+        pressed && styles.pressed,
+      ]}>
+      <View style={styles.inner}>
+        <Icon width={ICON} fill="#fff" style={iconStyle} />
+      </View>
+    </Pressable>
+  )
+}
+
+const styles = StyleSheet.create({
+  root: {
+    width: SIZE,
+    height: SIZE,
+    overflow: 'hidden',
+  },
+  inner: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    // @ts-expect-error web-only
+    backdropFilter: 'blur(8px)',
+    WebkitBackdropFilter: 'blur(8px)',
+  },
+  pressed: {
+    opacity: 0.85,
+  },
+})

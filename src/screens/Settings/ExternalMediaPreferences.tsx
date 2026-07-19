@@ -1,0 +1,129 @@
+import {Fragment, useCallback} from 'react'
+import {View} from 'react-native'
+import {Trans} from '@lingui/react/macro'
+
+import {
+  type CommonNavigatorParams,
+  type NativeStackScreenProps,
+} from '#/lib/routes/types'
+import {
+  type EmbedPlayerSource,
+  embedPlayerSources,
+  exemptExternalEmbedSources,
+  externalEmbedLabels,
+} from '#/lib/strings/embed-player'
+import {
+  useExternalEmbedsPrefs,
+  useSetExternalEmbedPref,
+} from '#/state/preferences'
+import {atoms as a, native} from '#/alf'
+import {Admonition} from '#/components/Admonition'
+import * as Toggle from '#/components/forms/Toggle'
+import * as Layout from '#/components/Layout'
+import * as SettingsList from './components/SettingsList'
+
+type Props = NativeStackScreenProps<
+  CommonNavigatorParams,
+  'PreferencesExternalEmbeds'
+>
+export function ExternalMediaPreferencesScreen({}: Props) {
+  return (
+    <Layout.Screen testID="externalMediaPreferencesScreen">
+      <Layout.Header.Outer>
+        <Layout.Header.BackButton />
+        <Layout.Header.Content>
+          <Layout.Header.TitleText>
+            <Trans>External Media Preferences</Trans>
+          </Layout.Header.TitleText>
+        </Layout.Header.Content>
+        <Layout.Header.Slot />
+      </Layout.Header.Outer>
+      <Layout.Content>
+        <SettingsList.Container>
+          <SettingsList.Item>
+            <Admonition type="info" style={[a.flex_1]}>
+              <Trans>
+                External media may allow websites to collect information about
+                you and your device. No information is sent or requested until
+                you press the "play" button.
+              </Trans>
+            </Admonition>
+          </SettingsList.Item>
+          <SettingsList.Group iconInset={false}>
+            <SettingsList.ItemText>
+              <Trans>Enable media players for</Trans>
+            </SettingsList.ItemText>
+            <View style={[a.mt_sm, a.w_full]}>
+              {native(<SettingsList.Divider style={[a.my_0]} />)}
+              <PrefSelector source="all" label="All" />
+              <SettingsList.Divider />
+              {Object.entries(externalEmbedLabels)
+                .filter(
+                  ([key]) =>
+                    !exemptExternalEmbedSources.has(key as EmbedPlayerSource),
+                )
+                .map(([key, label]) => (
+                  <Fragment key={key}>
+                    <PrefSelector
+                      source={key as EmbedPlayerSource}
+                      label={label}
+                      key={key}
+                    />
+                    {native(<SettingsList.Divider style={[a.my_0]} />)}
+                  </Fragment>
+                ))}
+            </View>
+          </SettingsList.Group>
+        </SettingsList.Container>
+      </Layout.Content>
+    </Layout.Screen>
+  )
+}
+
+function PrefSelector({
+  source,
+  label,
+}: {
+  source: EmbedPlayerSource | 'all'
+  label: string
+}) {
+  const setExternalEmbedPref = useSetExternalEmbedPref()
+  const sources = useExternalEmbedsPrefs()
+
+  const isChecked =
+    source === 'all'
+      ? embedPlayerSources
+          .filter(key => key !== 'tenor')
+          .every(key => sources?.[key] === 'show')
+      : sources?.[source] === 'show'
+
+  const handleChange = useCallback(() => {
+    if (source === 'all') {
+      const newValue = isChecked ? 'hide' : 'show'
+      for (const key of embedPlayerSources) {
+        if (key !== 'tenor') {
+          setExternalEmbedPref(key, newValue)
+        }
+      }
+    } else {
+      setExternalEmbedPref(source, isChecked ? 'hide' : 'show')
+    }
+  }, [source, isChecked, setExternalEmbedPref])
+
+  return (
+    <Toggle.Item
+      name={label}
+      label={label}
+      type="checkbox"
+      value={isChecked}
+      onChange={handleChange}
+      style={[
+        a.flex_1,
+        a.py_md,
+        native([a.justify_between, a.flex_row_reverse]),
+      ]}>
+      <Toggle.Platform />
+      <Toggle.LabelText style={[a.text_md]}>{label}</Toggle.LabelText>
+    </Toggle.Item>
+  )
+}

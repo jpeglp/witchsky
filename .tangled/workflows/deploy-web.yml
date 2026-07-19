@@ -1,0 +1,25 @@
+when:
+  - event: ["manuel"]
+    branch: ["main"]
+
+engine: "nixery"
+
+dependencies:
+  nixpkgs/nixpkgs-unstable:
+    - nodejs_26
+    - corepack
+    - just
+
+steps: 
+  - name: Install dependencies
+    command: |
+      corepack enable pnpm
+      export PATH="/tangled/home/.local/share/pnpm/bin:$PATH"
+      pnpm add -g wrangler
+
+  - name: Build
+    command: "just dist-build-web"
+
+  - name: Publish to Cloudflare Pages
+    command: |
+      wrangler pages deploy --branch canary

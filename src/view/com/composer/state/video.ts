@@ -1,0 +1,522 @@
+import {type ImagePickerAsset} from 'expo-image-picker'
+import {type AppBskyVideoDefs, type AtpAgent, type BlobRef} from '@atproto/api'
+import {type I18n} from '@lingui/core'
+import {msg} from '@lingui/core/macro'
+
+import {AbortError} from '#/lib/async/cancelable'
+import {VIDEO_MAX_SIZE_MB} from '#/lib/constants'
+import {compressVideo} from '#/lib/media/video/compress'
+import {
+  ServerError,
+  UploadLimitError,
+  VideoTooLargeError,
+} from '#/lib/media/video/errors'
+import {type VideoTelemetry} from '#/lib/media/video/telemetry'
+import {type CompressedVideo} from '#/lib/media/video/types'
+import {uploadVideo} from '#/lib/media/video/upload'
+import {createVideoAgent} from '#/lib/media/video/util'
+import {isNetworkError} from '#/lib/strings/errors'
+import {logger} from '#/logger'
+
+type CaptionsTrack = {lang: string; file: File}
+
+export type VideoAction =
+  | {
+      type: 'compressing_to_uploading'
+      video: CompressedVideo
+      signal: AbortSignal
+    }
+  | {
+      type: 'uploading_to_processing'
+      jobId: string
+      signal: AbortSignal
+    }
+  | {type: 'to_error'; error: string; signal: AbortSignal}
+  | {
+      type: 'to_done'
+      blobRef: BlobRef
+      signal: AbortSignal
+    }
+  | {type: 'update_progress'; progress: number; signal: AbortSignal}
+  | {
+      type: 'update_alt_text'
+      altText: string
+      signal: AbortSignal
+    }
+  | {
+      type: 'update_captions'
+      updater: (prev: CaptionsTrack[]) => CaptionsTrack[]
+      signal: AbortSignal
+    }
+  | {
+      type: 'update_job_status'
+      jobStatus: AppBskyVideoDefs.JobStatus
+      signal: AbortSignal
+    }
+
+const noopController = new AbortController()
+noopController.abort()
+
+export const NO_VIDEO = Object.freeze({
+  status: 'idle',
+  progress: 0,
+  abortController: noopController,
+  asset: undefined,
+  video: undefined,
+  jobId: undefined,
+  pendingPublish: undefined,
+  telemetry: undefined,
+  altText: '',
+  captions: [],
+})
+
+export type NoVideoState = typeof NO_VIDEO
+
+type ErrorState = {
+  status: 'error'
+  progress: 100
+  abortController: AbortController
+  asset: ImagePickerAsset | null
+  video: CompressedVideo | null
+  jobId: string | null
+  error: string
+  pendingPublish?: undefined
+  telemetry: VideoTelemetry
+  altText: string
+  captions: CaptionsTrack[]
+}
+
+type CompressingState = {
+  status: 'compressing'
+  progress: number
+  abortController: AbortController
+  asset: ImagePickerAsset
+  video?: undefined
+  jobId?: undefined
+  pendingPublish?: undefined
+  telemetry: VideoTelemetry
+  altText: string
+  captions: CaptionsTrack[]
+}
+
+type UploadingState = {
+  status: 'uploading'
+  progress: number
+  abortController: AbortController
+  asset: ImagePickerAsset
+  video: CompressedVideo
+  jobId?: undefined
+  pendingPublish?: undefined
+  telemetry: VideoTelemetry
+  altText: string
+  captions: CaptionsTrack[]
+}
+
+type ProcessingState = {
+  status: 'processing'
+  progress: number
+  abortController: AbortController
+  asset: ImagePickerAsset
+  video: CompressedVideo
+  jobId: string
+  jobStatus: AppBskyVideoDefs.JobStatus | null
+  pendingPublish?: undefined
+  telemetry: VideoTelemetry
+  altText: string
+  captions: CaptionsTrack[]
+}
+
+type DoneState = {
+  status: 'done'
+  progress: 100
+  abortController: AbortController
+  asset: ImagePickerAsset
+  video: CompressedVideo
+  jobId?: undefined
+  pendingPublish: {blobRef: BlobRef}
+  telemetry: VideoTelemetry
+  altText: string
+  captions: CaptionsTrack[]
+}
+
+export type RedraftState = {
+  status: 'done'
+  progress: 100
+  abortController: AbortController
+  asset: null
+  video?: undefined
+  jobId?: undefined
+  pendingPublish: {blobRef: BlobRef}
+  altText: string
+  captions: CaptionsTrack[]
+  redraftDimensions: {width: number; height: number}
+  playlistUri: string
+}
+
+export type VideoState =
+  | ErrorState
+  | CompressingState
+  | UploadingState
+  | ProcessingState
+  | DoneState
+  | RedraftState
+
+export function createVideoState(
+  asset: ImagePickerAsset,
+  abortController: AbortController,
+  telemetry: VideoTelemetry,
+): CompressingState {
+  return {
+    status: 'compressing',
+    progress: 0,
+    abortController,
+    asset,
+    telemetry,
+    altText: '',
+    captions: [],
+  }
+}
+
+export function createRedraftVideoState(opts: {
+  blobRef: BlobRef
+  width: number
+  height: number
+  altText?: string
+  playlistUri: string
+}): RedraftState {
+  const noopController = new AbortController()
+  return {
+    status: 'done',
+    progress: 100,
+    abortController: noopController,
+    asset: null,
+    pendingPublish: {blobRef: opts.blobRef},
+    altText: opts.altText || '',
+    captions: [],
+    redraftDimensions: {width: opts.width, height: opts.height},
+    playlistUri: opts.playlistUri,
+  }
+}
+
+export function videoReducer(
+  state: VideoState,
+  action: VideoAction,
+): VideoState {
+  if (action.signal.aborted || action.signal !== state.abortController.signal) {
+    // This action is stale and the process that spawned it is no longer relevant.
+    return state
+  }
+  if (action.type === 'to_error') {
+    return {
+      status: 'error',
+      progress: 100,
+      abortController: state.abortController,
+      error: action.error,
+      asset: state.asset ?? null,
+      video: state.video ?? null,
+      jobId: state.jobId ?? null,
+      telemetry: state.telemetry,
+      altText: state.altText,
+      captions: state.captions,
+    }
+  } else if (action.type === 'update_progress') {
+    if (state.status === 'compressing' || state.status === 'uploading') {
+      return {
+        ...state,
+        progress: action.progress,
+      }
+    }
+  } else if (action.type === 'update_alt_text') {
+    return {
+      ...state,
+      altText: action.altText,
+    }
+  } else if (action.type === 'update_captions') {
+    return {
+      ...state,
+      captions: action.updater(state.captions),
+    }
+  } else if (action.type === 'compressing_to_uploading') {
+    if (state.status === 'compressing') {
+      return {
+        status: 'uploading',
+        progress: 0,
+        abortController: state.abortController,
+        asset: state.asset,
+        video: action.video,
+        telemetry: state.telemetry,
+        altText: state.altText,
+        captions: state.captions,
+      }
+    }
+    return state
+  } else if (action.type === 'uploading_to_processing') {
+    if (state.status === 'uploading') {
+      return {
+        status: 'processing',
+        progress: 0,
+        abortController: state.abortController,
+        asset: state.asset,
+        video: state.video,
+        jobId: action.jobId,
+        jobStatus: null,
+        telemetry: state.telemetry,
+        altText: state.altText,
+        captions: state.captions,
+      }
+    }
+  } else if (action.type === 'update_job_status') {
+    if (state.status === 'processing') {
+      return {
+        ...state,
+        jobStatus: action.jobStatus,
+        progress:
+          action.jobStatus.progress !== undefined
+            ? action.jobStatus.progress / 100
+            : state.progress,
+      }
+    }
+  } else if (action.type === 'to_done') {
+    if (state.status === 'processing') {
+      return {
+        status: 'done',
+        progress: 100,
+        abortController: state.abortController,
+        asset: state.asset,
+        video: state.video,
+        pendingPublish: {
+          blobRef: action.blobRef,
+        },
+        telemetry: state.telemetry,
+        altText: state.altText,
+        captions: state.captions,
+      }
+    }
+  }
+  console.error(
+    'Unexpected video action (' +
+      action.type +
+      ') while in ' +
+      state.status +
+      ' state',
+  )
+  return state
+}
+
+function trunc2dp(num: number) {
+  return Math.trunc(num * 100) / 100
+}
+
+export async function processVideo(
+  asset: ImagePickerAsset,
+  dispatch: (action: VideoAction) => void,
+  agent: AtpAgent,
+  did: string,
+  signal: AbortSignal,
+  i18n: I18n,
+  telemetry: VideoTelemetry,
+) {
+  let video: CompressedVideo | undefined
+  try {
+    telemetry.compressStarted()
+    video = await compressVideo(asset, {
+      onProgress: num => {
+        dispatch({type: 'update_progress', progress: trunc2dp(num), signal})
+      },
+      signal,
+      onProbe: metadata => telemetry.probed(metadata),
+    })
+  } catch (e) {
+    const message = getCompressErrorMessage(e, i18n)
+    if (message !== null) {
+      telemetry.compressFailed(e)
+      dispatch({
+        type: 'to_error',
+        error: message,
+        signal,
+      })
+    }
+    return
+  }
+  if (video.passthroughReason) {
+    telemetry.compressSkipped({
+      size: video.size,
+      mimeType: video.mimeType,
+      skipReason: video.passthroughReason,
+    })
+  } else {
+    telemetry.compressCompleted({size: video.size, mimeType: video.mimeType})
+  }
+  dispatch({
+    type: 'compressing_to_uploading',
+    video,
+    signal,
+  })
+
+  let uploadResponse: AppBskyVideoDefs.JobStatus | undefined
+  try {
+    telemetry.uploadStarted(video.size)
+    uploadResponse = await uploadVideo({
+      video,
+      agent,
+      did,
+      signal,
+      i18n,
+      setProgress: p => {
+        dispatch({type: 'update_progress', progress: p, signal})
+      },
+    })
+  } catch (e) {
+    const message = getUploadErrorMessage(e, i18n)
+    if (message !== null) {
+      telemetry.uploadFailed(e)
+      dispatch({
+        type: 'to_error',
+        error: message,
+        signal,
+      })
+    }
+    return
+  }
+
+  const jobId = uploadResponse.jobId
+  telemetry.uploadCompleted(jobId)
+  telemetry.processingStarted(jobId)
+  dispatch({
+    type: 'uploading_to_processing',
+    jobId,
+    signal,
+  })
+
+  let pollFailures = 0
+  while (true) {
+    if (signal.aborted) {
+      return // Exit async loop
+    }
+
+    const videoAgent = createVideoAgent()
+    let status: AppBskyVideoDefs.JobStatus | undefined
+    let blob: BlobRef | undefined
+    try {
+      const response = await videoAgent.app.bsky.video.getJobStatus({jobId})
+      status = response.data.jobStatus
+      pollFailures = 0
+
+      if (status.state === 'JOB_STATE_COMPLETED') {
+        blob = status.blob
+        if (!blob) {
+          throw new Error('Job completed, but did not return a blob')
+        }
+      } else if (status.state === 'JOB_STATE_FAILED') {
+        throw new Error(status.error ?? 'Job failed to process')
+      }
+    } catch (e) {
+      if (!status) {
+        pollFailures++
+        if (pollFailures < 50) {
+          await new Promise(resolve => setTimeout(resolve, 5000))
+          continue // Continue async loop
+        }
+      }
+
+      logger.error('Error processing video', {safeMessage: e})
+      telemetry.processingFailed(e)
+      dispatch({
+        type: 'to_error',
+        error: i18n._(msg`Video failed to process`),
+        signal,
+      })
+      return // Exit async loop
+    }
+
+    if (blob) {
+      telemetry.processingCompleted()
+      dispatch({
+        type: 'to_done',
+        blobRef: blob,
+        signal,
+      })
+    } else {
+      dispatch({
+        type: 'update_job_status',
+        jobStatus: status,
+        signal,
+      })
+    }
+
+    if (
+      status.state !== 'JOB_STATE_COMPLETED' &&
+      status.state !== 'JOB_STATE_FAILED'
+    ) {
+      await new Promise(resolve => setTimeout(resolve, 1500))
+      continue // Continue async loop
+    }
+
+    return // Exit async loop
+  }
+}
+
+function getCompressErrorMessage(e: unknown, i18n: I18n): string | null {
+  if (e instanceof AbortError) {
+    return null
+  }
+  if (e instanceof VideoTooLargeError) {
+    return i18n._(
+      msg`The selected video is larger than ${VIDEO_MAX_SIZE_MB} MB. Please try again with a smaller file.`,
+    )
+  }
+  logger.error('Error compressing video', {safeMessage: e})
+  return i18n._(msg`An error occurred while compressing the video.`)
+}
+
+function getUploadErrorMessage(e: unknown, i18n: I18n): string | null {
+  if (e instanceof AbortError) {
+    return null
+  }
+  if (e instanceof ServerError || e instanceof UploadLimitError) {
+    // https://github.com/bluesky-social/tango/blob/lumi/lumi/worker/permissions.go#L77
+    switch (e.message) {
+      case 'User is not allowed to upload videos':
+        return i18n._(msg`You are not allowed to upload videos.`)
+      case 'Uploading is disabled at the moment':
+        return i18n._(
+          msg`Hold up! We’re gradually giving access to video, and you’re still waiting in line. Check back soon!`,
+        )
+      case "Failed to get user's upload stats":
+        return i18n._(
+          msg`We were unable to determine if you are allowed to upload videos. Please try again.`,
+        )
+      case 'User has exceeded daily upload bytes limit':
+        return i18n._(
+          msg`You've reached your daily limit for video uploads (too many bytes)`,
+        )
+      case 'User has exceeded daily upload videos limit':
+        return i18n._(
+          msg`You've reached your daily limit for video uploads (too many videos)`,
+        )
+      case 'Account is not old enough to upload videos':
+        return i18n._(
+          msg`Your account is not yet old enough to upload videos. Please try again later.`,
+        )
+      case 'file size (100000001 bytes) is larger than the maximum allowed size (100000000 bytes)':
+      case 'file size (300000001 bytes) is larger than the maximum allowed size (300000000 bytes)':
+        return i18n._(
+          msg`The selected video is larger than ${VIDEO_MAX_SIZE_MB} MB. Please try again with a smaller file.`,
+        )
+      case 'Confirm your email address to upload videos':
+        return i18n._(msg`Please confirm your email address to upload videos.`)
+    }
+  }
+
+  if (isNetworkError(e)) {
+    return i18n._(
+      msg`An error occurred while uploading the video. Please check your internet connection and try again.`,
+    )
+  } else {
+    // only log errors if they are unknown (and not network errors)
+    logger.error('Error uploading video', {safeMessage: e})
+  }
+
+  const message = e instanceof Error ? e.message : ''
+  return i18n._(msg`An error occurred while uploading the video. ${message}`)
+}

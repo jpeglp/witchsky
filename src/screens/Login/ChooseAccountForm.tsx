@@ -1,0 +1,121 @@
+import {useCallback, useState} from 'react'
+import {View} from 'react-native'
+import {msg} from '@lingui/core/macro'
+import {useLingui} from '@lingui/react'
+import {Trans} from '@lingui/react/macro'
+
+import {logger} from '#/logger'
+import {type SessionAccount, useSession, useSessionApi} from '#/state/session'
+import {canAttemptSessionResume} from '#/state/session/util'
+import {useLoggedOutViewControls} from '#/state/shell/logged-out'
+import {atoms as a, web} from '#/alf'
+import {AccountList} from '#/components/AccountList'
+import {Button, ButtonText} from '#/components/Button'
+import * as TextField from '#/components/forms/TextField'
+import * as Toast from '#/components/Toast'
+import {useAnalytics} from '#/analytics'
+import {IS_WEB} from '#/env'
+import {FormContainer} from './FormContainer'
+
+export const ChooseAccountForm = ({
+  onSelectAccount,
+  onPressBack,
+}: {
+  onSelectAccount: (account?: SessionAccount) => void
+  onPressBack: () => void
+}) => {
+  const [pendingDid, setPendingDid] = useState<string | null>(null)
+  const {_} = useLingui()
+  const ax = useAnalytics()
+  const {currentAccount} = useSession()
+  const {resumeSession} = useSessionApi()
+  const {setShowLoggedOut} = useLoggedOutViewControls()
+
+  const onSelect = useCallback(
+    async (account: SessionAccount) => {
+      if (pendingDid) {
+        // The session API isn't resilient to race conditions so let's just ignore this.
+        return
+      }
+      if (!canAttemptSessionResume(account)) {
+        // Move to login form.
+        onSelectAccount(account)
+        return
+      }
+      if (account.did === currentAccount?.did) {
+        setShowLoggedOut(false)
+        Toast.show(_(msg`Already signed in as @${account.handle}`))
+        return
+      }
+      try {
+        setPendingDid(account.did)
+        await Promise.race([
+          resumeSession(account, true),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error('Session resume timed out')),
+              15_000,
+            ),
+          ),
+        ])
+        ax.metric('account:loggedIn', {
+          logContext: 'ChooseAccountForm',
+          withPassword: false,
+        })
+        Toast.show(_(msg`Signed in as @${account.handle}`))
+      } catch (e: any) {
+        logger.warn('choose account: initSession failed', {
+          message: e instanceof Error ? e.message : 'Unknown error',
+        })
+        Toast.show(_(msg`Sign in failed. Please try again.`))
+        // Move to login form.
+        onSelectAccount(account)
+      } finally {
+        setPendingDid(null)
+      }
+    },
+    [
+      currentAccount,
+      resumeSession,
+      pendingDid,
+      onSelectAccount,
+      setShowLoggedOut,
+      _,
+      ax,
+    ],
+  )
+
+  return (
+    <FormContainer
+      testID="chooseAccountForm"
+      titleText={<Trans>Select account</Trans>}
+      style={web([a.py_2xl])}>
+      <View>
+        {IS_WEB && (
+          <TextField.LabelText>
+            <Trans>Sign in as...</Trans>
+          </TextField.LabelText>
+        )}
+        <AccountList
+          onSelectAccount={account => {
+            void onSelect(account)
+          }}
+          onSelectOther={() => onSelectAccount()}
+          pendingDid={pendingDid}
+        />
+      </View>
+      {IS_WEB && (
+        <View style={[a.flex_row]}>
+          <Button
+            label={_(msg`Back`)}
+            color="secondary"
+            size="large"
+            onPress={onPressBack}>
+            <ButtonText>{_(msg`Back`)}</ButtonText>
+          </Button>
+          <View style={[a.flex_1]} />
+        </View>
+      )}
+    </FormContainer>
+  )
+}

@@ -1,0 +1,107 @@
+import {memo} from 'react'
+import {useWindowDimensions, View} from 'react-native'
+import Animated, {
+  interpolateColor,
+  type SharedValue,
+  useAnimatedStyle,
+} from 'react-native-reanimated'
+import {type $Typed, type AppBskyEmbedRecord} from '@atproto/api'
+
+import {useEnableSquareButtons} from '#/state/preferences/enable-square-buttons'
+import {atoms as a, native, useTheme, web} from '#/alf'
+import {Embed, PostEmbedViewContext} from '#/components/Post/Embed'
+import {MessageContextProvider} from './MessageContext'
+
+const SQUARED_BORDER_RADIUS = 4
+
+let MessageItemEmbed = ({
+  embed,
+  isFromSelf,
+  isGroupChat,
+  squaredTopCorner,
+  squaredBottomCorner,
+  highlightSV,
+}: {
+  embed: $Typed<AppBskyEmbedRecord.View>
+  isFromSelf: boolean
+  isGroupChat: boolean
+  squaredTopCorner: boolean
+  squaredBottomCorner: boolean
+  highlightSV: SharedValue<number>
+}): React.ReactNode => {
+  const enableSquareButtons = useEnableSquareButtons()
+  const t = useTheme()
+  const screen = useWindowDimensions()
+  const borderRadius = enableSquareButtons ? 4 : 20
+
+  const restingColor = isFromSelf ? t.palette.primary_50 : t.palette.contrast_50
+  const highlightColor = isFromSelf
+    ? t.palette.primary_300
+    : t.palette.primary_100
+  const highlightStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      highlightSV.get(),
+      [0, 1],
+      [restingColor, highlightColor],
+    ),
+  }))
+
+  const radiiStyle = isFromSelf
+    ? {
+        borderBottomRightRadius: squaredBottomCorner
+          ? SQUARED_BORDER_RADIUS
+          : borderRadius,
+        borderTopRightRadius: squaredTopCorner
+          ? SQUARED_BORDER_RADIUS
+          : borderRadius,
+      }
+    : {
+        borderBottomLeftRadius: squaredBottomCorner
+          ? SQUARED_BORDER_RADIUS
+          : borderRadius,
+        borderTopLeftRadius: squaredTopCorner
+          ? SQUARED_BORDER_RADIUS
+          : borderRadius,
+      }
+
+  return (
+    <MessageContextProvider>
+      <View
+        style={[
+          isFromSelf ? a.self_end : a.self_start,
+          !isFromSelf && isGroupChat && a.ml_sm,
+          native({
+            flexBasis: 0,
+            width: Math.min(screen.width, 600) / 1.4,
+          }),
+          web({
+            width: '100%',
+            minWidth: 280,
+            maxWidth: 360,
+          }),
+        ]}>
+        <Animated.View
+          style={[
+            enableSquareButtons ? a.rounded_sm : a.rounded_xl,
+            a.overflow_hidden,
+            radiiStyle,
+            highlightStyle,
+          ]}>
+          <Embed
+            embed={embed}
+            allowNestedQuotes
+            viewContext={PostEmbedViewContext.ChatMessage}
+            style={[
+              enableSquareButtons ? a.rounded_sm : a.rounded_xl,
+              a.overflow_hidden,
+              a.border_0,
+              radiiStyle,
+            ]}
+          />
+        </Animated.View>
+      </View>
+    </MessageContextProvider>
+  )
+}
+MessageItemEmbed = memo(MessageItemEmbed)
+export {MessageItemEmbed}

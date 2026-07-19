@@ -1,0 +1,514 @@
+import {useCallback, useMemo} from 'react'
+import {View} from 'react-native'
+import {
+  type $Typed,
+  type AppBskyFeedDefs,
+  AppBskyFeedPost,
+  AtUri,
+  moderatePost,
+  RichText as RichTextAPI,
+} from '@atproto/api'
+import {msg} from '@lingui/core/macro'
+import {useLingui} from '@lingui/react'
+import {Trans} from '@lingui/react/macro'
+import {useQueryClient} from '@tanstack/react-query'
+
+import {makeProfileLink} from '#/lib/routes/links'
+import {getChatInviteCodeFromUrl} from '#/lib/strings/url-helpers'
+import {useDirectFetchRecords} from '#/state/preferences/direct-fetch-records'
+import {useModerationOpts} from '#/state/preferences/moderation-opts'
+import {useDirectFetchEmbedRecord} from '#/state/queries/direct-fetch-record'
+import {unstableCacheProfileView} from '#/state/queries/profile'
+import {useSession} from '#/state/session'
+import {Link} from '#/view/com/util/Link'
+import {PostMeta} from '#/view/com/util/PostMeta'
+import {atoms as a, useTheme} from '#/alf'
+import {useInteractionState} from '#/components/hooks/useInteractionState'
+import {GalleryBleed} from '#/components/images/Gallery'
+import {ContentHider} from '#/components/moderation/ContentHider'
+import {PostAlerts} from '#/components/moderation/PostAlerts'
+import {StandardSiteEmbed} from '#/components/Post/Embed/StandardSiteEmbed'
+import {isStandardSiteEmbed} from '#/components/Post/Embed/StandardSiteEmbed/utils'
+import {RichText} from '#/components/RichText'
+import {Embed as StarterPackCard} from '#/components/StarterPack/StarterPackCard'
+import {SubtleHover} from '#/components/SubtleHover'
+import * as bsky from '#/types/bsky'
+import {
+  type Embed as TEmbed,
+  type EmbedType,
+  parseEmbed,
+} from '#/types/bsky/post'
+import {ChatInviteEmbed} from './ChatInviteEmbed'
+import {ExternalEmbed} from './ExternalEmbed'
+import {ModeratedFeedEmbed} from './FeedEmbed'
+import {ImageEmbed} from './ImageEmbed'
+import {ModeratedListEmbed} from './ListEmbed'
+import {PostPlaceholder as PostPlaceholderText} from './PostPlaceholder'
+import {type CommonProps, type EmbedProps, PostEmbedViewContext} from './types'
+import {VideoEmbed} from './VideoEmbed'
+
+export {PostEmbedViewContext} from './types'
+
+export function Embed({embed: rawEmbed, ...rest}: EmbedProps) {
+  const embed = parseEmbed(rawEmbed)
+
+  switch (embed.type) {
+    case 'images':
+    case 'gallery':
+    case 'link':
+    case 'video': {
+      return <MediaEmbed embed={embed} {...rest} />
+    }
+    case 'feed':
+    case 'list':
+    case 'starter_pack':
+    case 'labeler':
+    case 'post':
+    case 'post_not_found':
+    case 'post_blocked':
+    case 'post_detached': {
+      return <RecordEmbed embed={embed} {...rest} />
+    }
+    case 'post_with_media': {
+      return (
+        <View style={rest.style}>
+          <MediaEmbed embed={embed.media} {...rest} />
+          <RecordEmbed embed={embed.view} {...rest} />
+        </View>
+      )
+    }
+    default: {
+      return null
+    }
+  }
+}
+
+function MediaEmbed({
+  embed,
+  ...rest
+}: CommonProps & {
+  embed: TEmbed
+}) {
+  switch (embed.type) {
+    case 'images':
+    case 'gallery': {
+      return (
+        <ContentHider
+          modui={rest.moderation?.ui('contentMedia')}
+          activeStyle={[a.mt_sm]}>
+          <ImageEmbed embed={embed} {...rest} />
+        </ContentHider>
+      )
+    }
+    case 'link': {
+      if (isStandardSiteEmbed(embed.view.external)) {
+        return (
+          <ContentHider
+            modui={rest.moderation?.ui('contentMedia')}
+            activeStyle={[a.mt_sm]}>
+            <StandardSiteEmbed
+              view={embed.view.external}
+              onEmbedInteractionCallback={rest.onOpen}
+              style={[a.mt_sm, rest.style]}
+            />
+          </ContentHider>
+        )
+      }
+      const chatInviteCode = getChatInviteCodeFromUrl(embed.view.external.uri)
+      if (chatInviteCode) {
+        return (
+          <ContentHider
+            modui={rest.moderation?.ui('contentMedia')}
+            activeStyle={[a.mt_sm]}>
+            <ChatInviteEmbed
+              code={chatInviteCode}
+              link={embed.view.external}
+              onOpen={rest.onOpen}
+              style={rest.style}
+            />
+          </ContentHider>
+        )
+      }
+      return (
+        <ContentHider
+          modui={rest.moderation?.ui('contentMedia')}
+          activeStyle={[a.mt_sm]}>
+          <ExternalEmbed
+            link={embed.view.external}
+            onOpen={rest.onOpen}
+            style={[a.mt_sm, rest.style]}
+          />
+        </ContentHider>
+      )
+    }
+    case 'video': {
+      return (
+        <ContentHider
+          modui={rest.moderation?.ui('contentMedia')}
+          activeStyle={[a.mt_sm]}>
+          <VideoEmbed embed={embed.view} />
+        </ContentHider>
+      )
+    }
+    default: {
+      return null
+    }
+  }
+}
+
+function RecordEmbed({
+  embed,
+  ...rest
+}: CommonProps & {
+  embed: TEmbed
+}) {
+  const {_} = useLingui()
+  const directFetchEnabled = useDirectFetchRecords()
+  const shouldDirectFetch =
+    (embed.type === 'post_blocked' ||
+      embed.type === 'post_detached' ||
+      embed.type === 'post_not_found') &&
+    directFetchEnabled
+
+  const directRecord = useDirectFetchEmbedRecord({
+    uri:
+      embed.type === 'post_blocked' ||
+      embed.type === 'post_detached' ||
+      embed.type === 'post_not_found'
+        ? embed.view.uri
+        : '',
+    enabled: shouldDirectFetch,
+  })
+
+  switch (embed.type) {
+    case 'feed': {
+      return (
+        <View style={a.mt_sm}>
+          <ModeratedFeedEmbed embed={embed} {...rest} />
+        </View>
+      )
+    }
+    case 'list': {
+      return (
+        <View style={a.mt_sm}>
+          <ModeratedListEmbed embed={embed} />
+        </View>
+      )
+    }
+    case 'starter_pack': {
+      return (
+        <View style={a.mt_sm}>
+          <StarterPackCard starterPack={embed.view} />
+        </View>
+      )
+    }
+    case 'labeler': {
+      // not implemented
+      return null
+    }
+    case 'post': {
+      if (rest.isWithinQuote && !rest.allowNestedQuotes) {
+        return null
+      }
+
+      return (
+        <QuoteEmbed
+          {...rest}
+          embed={embed}
+          viewContext={rest.viewContext}
+          isWithinQuote={rest.isWithinQuote}
+          allowNestedQuotes={rest.allowNestedQuotes}
+        />
+      )
+    }
+    case 'post_not_found': {
+      const directFetchResult = directRecord.data
+      const record = directFetchResult?.record
+      if (record !== undefined) {
+        return (
+          <DirectFetchEmbed
+            {...rest}
+            embed={record}
+            visibilityLabel={_(msg`Blocked`)}
+          />
+        )
+      }
+
+      const directFetchPending = shouldDirectFetch && directRecord.isPending
+
+      return (
+        <PostPlaceholderText directFetchEnabled={directFetchPending}>
+          {directFetchResult?.unavailableReason === 'account_suspended' ? (
+            <Trans>Author account suspended</Trans>
+          ) : directFetchResult?.unavailableReason === 'repo_not_found' ? (
+            <Trans>Author account unavailable</Trans>
+          ) : (
+            <Trans>Deleted</Trans>
+          )}
+        </PostPlaceholderText>
+      )
+    }
+    case 'post_blocked': {
+      const directFetchResult = directRecord.data
+      const record = directFetchResult?.record
+      if (record !== undefined) {
+        return (
+          <DirectFetchEmbed
+            {...rest}
+            embed={record}
+            visibilityLabel={_(msg`Blocked`)}
+          />
+        )
+      }
+
+      const directFetchPending = shouldDirectFetch && directRecord.isPending
+
+      return (
+        <PostPlaceholderText directFetchEnabled={directFetchPending}>
+          {directFetchResult?.unavailableReason === 'account_suspended' ? (
+            <Trans>Author account suspended</Trans>
+          ) : directFetchResult?.unavailableReason === 'repo_not_found' ? (
+            <Trans>Author account unavailable</Trans>
+          ) : shouldDirectFetch && !directFetchPending ? (
+            <Trans>Post unavailable</Trans>
+          ) : (
+            <Trans>Blocked</Trans>
+          )}
+        </PostPlaceholderText>
+      )
+    }
+    case 'post_detached': {
+      const record = directRecord.data?.record
+      if (record !== undefined) {
+        return (
+          <DirectFetchEmbed
+            {...rest}
+            embed={record}
+            visibilityLabel={_(msg`Removed by author`)}
+            visibilityLabelOwner={_(msg`Removed by you`)}
+          />
+        )
+      }
+
+      return (
+        <PostDetachedEmbed
+          embed={embed}
+          directFetchEnabled={shouldDirectFetch && directRecord.isPending}
+        />
+      )
+    }
+    default: {
+      return null
+    }
+  }
+}
+
+export function DirectFetchEmbed({
+  embed,
+  visibilityLabel,
+  visibilityLabelOwner,
+  ...rest
+}: Omit<CommonProps, 'viewContext'> & {
+  embed: EmbedType<'post'>
+  viewContext?: PostEmbedViewContext
+  visibilityLabel: string
+  visibilityLabelOwner?: string
+}) {
+  const {currentAccount} = useSession()
+  const isViewerOwner = currentAccount?.did
+    ? embed.view.uri.includes(currentAccount.did)
+    : false
+
+  return (
+    <View>
+      <QuoteEmbed
+        {...rest}
+        embed={embed}
+        viewContext={rest.viewContext}
+        isWithinQuote={rest.isWithinQuote}
+        allowNestedQuotes={rest.allowNestedQuotes}
+        visibilityLabel={
+          isViewerOwner && visibilityLabelOwner
+            ? visibilityLabelOwner
+            : visibilityLabel
+        }
+      />
+    </View>
+  )
+}
+
+export function PostDetachedEmbed({
+  embed,
+  directFetchEnabled,
+}: {
+  embed: EmbedType<'post_detached'>
+  directFetchEnabled?: boolean
+}) {
+  const {currentAccount} = useSession()
+  const isViewerOwner = currentAccount?.did
+    ? embed.view.uri.includes(currentAccount.did)
+    : false
+
+  return (
+    <PostPlaceholderText directFetchEnabled={directFetchEnabled}>
+      {isViewerOwner ? (
+        <Trans>Removed by you</Trans>
+      ) : (
+        <Trans>Removed by author</Trans>
+      )}
+    </PostPlaceholderText>
+  )
+}
+
+/*
+ * Nests parent `Embed` component and therefore must live in this file to avoid
+ * circular imports.
+ */
+export function QuoteEmbed({
+  embed,
+  onOpen,
+  style,
+  linkDisabled,
+  isWithinQuote: parentIsWithinQuote,
+  allowNestedQuotes: parentAllowNestedQuotes,
+  showPronouns,
+  viewContext,
+}: Omit<CommonProps, 'viewContext'> & {
+  embed: EmbedType<'post'>
+  viewContext?: PostEmbedViewContext
+  visibilityLabel?: string
+  linkDisabled?: boolean
+}) {
+  const moderationOpts = useModerationOpts()
+  const quote = useMemo<$Typed<AppBskyFeedDefs.PostView>>(
+    () => ({
+      ...embed.view,
+      $type: 'app.bsky.feed.defs#postView',
+      record: embed.view.value,
+      embed: embed.view.embeds?.[0],
+    }),
+    [embed],
+  )
+  const moderation = useMemo(() => {
+    return moderationOpts ? moderatePost(quote, moderationOpts) : undefined
+  }, [quote, moderationOpts])
+
+  const t = useTheme()
+  const queryClient = useQueryClient()
+  const itemUrip = new AtUri(quote.uri)
+  const itemHref = makeProfileLink(quote.author, 'post', itemUrip.rkey)
+  const itemTitle = `Post by ${quote.author.handle}`
+
+  const richText = useMemo(() => {
+    if (
+      !bsky.dangerousIsType<AppBskyFeedPost.Record>(
+        quote.record,
+        AppBskyFeedPost.isRecord,
+      )
+    )
+      return undefined
+    const {text, facets} = quote.record
+    return text.trim()
+      ? new RichTextAPI({text: text, facets: facets})
+      : undefined
+  }, [quote.record])
+
+  const onBeforePress = useCallback(() => {
+    unstableCacheProfileView(queryClient, quote.author)
+    onOpen?.()
+  }, [queryClient, quote.author, onOpen])
+
+  const {
+    state: hover,
+    onIn: onPointerEnter,
+    onOut: onPointerLeave,
+  } = useInteractionState()
+  const {
+    state: pressed,
+    onIn: onPressIn,
+    onOut: onPressOut,
+  } = useInteractionState()
+
+  const contents = (
+    <>
+      <PostMeta
+        author={quote.author}
+        moderation={moderation}
+        showAvatar
+        showPronouns={showPronouns}
+        postHref={itemHref}
+        timestamp={quote.indexedAt}
+        linkDisabled
+      />
+      {moderation ? (
+        <PostAlerts modui={moderation.ui('contentView')} style={[a.py_xs]} />
+      ) : null}
+      {richText ? (
+        <RichText
+          value={richText}
+          style={a.text_md}
+          numberOfLines={20}
+          disableLinks
+        />
+      ) : null}
+      {quote.embed && (
+        <Embed
+          embed={quote.embed}
+          moderation={moderation}
+          viewContext={viewContext}
+          isWithinQuote={parentIsWithinQuote ?? true}
+          // already within quote? override nested
+          allowNestedQuotes={
+            parentIsWithinQuote ? false : parentAllowNestedQuotes
+          }
+          // The photo embed belongs to the quoted post, so attribute its
+          // analytics to the quoted post rather than the parent.
+          post={quote}
+        />
+      )}
+    </>
+  )
+
+  return (
+    <GalleryBleed>
+      <View
+        style={[viewContext !== PostEmbedViewContext.ChatMessage && a.mt_sm]}
+        onPointerEnter={linkDisabled ? undefined : onPointerEnter}
+        onPointerLeave={linkDisabled ? undefined : onPointerLeave}>
+        <ContentHider
+          modui={moderation?.ui('contentList')}
+          style={[a.rounded_md, a.border, t.atoms.border_contrast_low, style]}
+          activeStyle={[a.p_md, a.pt_sm]}
+          childContainerStyle={[a.pt_sm]}>
+          {({active}) => (
+            <>
+              {!active && !linkDisabled && (
+                <SubtleHover
+                  native
+                  hover={hover || pressed}
+                  style={[a.rounded_md]}
+                />
+              )}
+              {linkDisabled ? (
+                <View style={[!active && a.p_md]} pointerEvents="none">
+                  {contents}
+                </View>
+              ) : (
+                <Link
+                  style={[!active && a.p_md]}
+                  hoverStyle={t.atoms.border_contrast_high}
+                  href={itemHref}
+                  title={itemTitle}
+                  onBeforePress={onBeforePress}
+                  onPressIn={onPressIn}
+                  onPressOut={onPressOut}>
+                  {contents}
+                </Link>
+              )}
+            </>
+          )}
+        </ContentHider>
+      </View>
+    </GalleryBleed>
+  )
+}

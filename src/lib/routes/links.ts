@@ -1,0 +1,57 @@
+import {type AppBskyGraphDefs, AtUri} from '@atproto/api'
+
+import {profileIdentifier} from '#/lib/strings/handles'
+import * as persisted from '#/state/persisted'
+
+export function makeProfileLink(
+  info: {
+    did: string
+    handle: string
+  },
+  ...segments: string[]
+) {
+  const useHandle = persisted.get('useHandleInLinks') ?? false
+  const identifier = useHandle ? profileIdentifier(info) : info.did
+  return [`/profile`, identifier, ...segments].join('/')
+}
+
+export function makeCustomFeedLink(
+  did: string,
+  rkey: string,
+  segment?: string,
+  feedCacheKey?: 'discover' | 'explore',
+) {
+  return (
+    [`/profile`, did, 'feed', rkey, ...(segment ? [segment] : [])].join('/') +
+    (feedCacheKey ? `?feedCacheKey=${encodeURIComponent(feedCacheKey)}` : '')
+  )
+}
+
+export function makeListLink(did: string, rkey: string, ...segments: string[]) {
+  return [`/profile`, did, 'lists', rkey, ...segments].join('/')
+}
+
+export function makeTagLink(did: string) {
+  return `/search?q=${encodeURIComponent(did)}`
+}
+
+export function makeSearchLink(props: {query: string; from?: 'me' | string}) {
+  return `/search?q=${encodeURIComponent(
+    props.query + (props.from ? ` from:${props.from}` : ''),
+  )}`
+}
+
+export function makeStarterPackLink(
+  starterPackOrName:
+    | AppBskyGraphDefs.StarterPackViewBasic
+    | AppBskyGraphDefs.StarterPackView
+    | string,
+  rkey?: string,
+) {
+  if (typeof starterPackOrName === 'string') {
+    return `https://bsky.app/start/${starterPackOrName}/${rkey}`
+  } else {
+    const uriRkey = new AtUri(starterPackOrName.uri).rkey
+    return `https://bsky.app/start/${starterPackOrName.creator.handle}/${uriRkey}`
+  }
+}

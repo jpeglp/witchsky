@@ -1,0 +1,341 @@
+import {useLayoutEffect, useRef, useState} from 'react'
+import {View} from 'react-native'
+import {
+  type AppBskyActorDefs,
+  moderateProfile,
+  type ModerationOpts,
+} from '@atproto/api'
+import {Plural, Trans, useLingui} from '@lingui/react/macro'
+
+import {
+  type FollowedByMetricsDisplay,
+  shouldShowFollowedByOverflowCount,
+  shouldShowFollowedByOverflowPlus,
+  shouldShowFollowedByText,
+} from '#/lib/metrics-display'
+import {makeProfileLink} from '#/lib/routes/links'
+import {sanitizeDisplayName} from '#/lib/strings/display-names'
+import {useEnableSquareAvatars} from '#/state/preferences/enable-square-avatars'
+import {UserAvatar} from '#/view/com/util/UserAvatar'
+import {atoms as a, useTheme} from '#/alf'
+import {PlusSmall_Stroke2_Corner0_Rounded as Plus} from '#/components/icons/Plus'
+import {Link, type LinkProps} from '#/components/Link'
+import {Text} from '#/components/Typography'
+import type * as bsky from '#/types/bsky'
+
+const AVI_SIZE = 30
+const AVI_SIZE_SMALL = 20
+const AVI_BORDER = 1
+
+function avatarBorderRadius(size: number, square: boolean) {
+  if (square) {
+    return size > 32 ? 8 : 3
+  }
+  return (size + AVI_BORDER * 2) / 2
+}
+
+/**
+ * Shared logic to determine if `KnownFollowers` should be shown.
+ *
+ * Checks the # of actual returned users instead of the `count` value, because
+ * `count` includes blocked users and `followers` does not.
+ */
+export function shouldShowKnownFollowers(
+  knownFollowers?: AppBskyActorDefs.KnownFollowers,
+) {
+  return knownFollowers && knownFollowers.followers.length > 0
+}
+
+export function KnownFollowers({
+  profile,
+  moderationOpts,
+  onLinkPress,
+  minimal,
+  showIfEmpty,
+  followedByDisplay = 'names',
+}: {
+  profile: bsky.profile.AnyProfileView
+  moderationOpts: ModerationOpts
+  onLinkPress?: LinkProps['onPress']
+  minimal?: boolean
+  showIfEmpty?: boolean
+  followedByDisplay?: FollowedByMetricsDisplay
+}) {
+  const cacheRef = useRef<Map<string, AppBskyActorDefs.KnownFollowers>>(
+    new Map(),
+  )
+  const [cachedKnownFollowers, setCachedKnownFollowers] = useState<
+    AppBskyActorDefs.KnownFollowers | undefined
+  >()
+  const knownFollowers = profile.viewer?.knownFollowers
+
+  /*
+   * Results for `knownFollowers` are not sorted consistently, so when
+   * revalidating we can see a flash of this data updating. This cache prevents
+   * this happening for screens that remain in memory. When pushing a new
+   * screen, or once this one is popped, this cache is empty, so new data is
+   * displayed.
+   */
+  useLayoutEffect(() => {
+    if (knownFollowers && !cacheRef.current.has(profile.did)) {
+      cacheRef.current.set(profile.did, knownFollowers)
+    }
+    setCachedKnownFollowers(cacheRef.current.get(profile.did))
+  }, [profile.did, knownFollowers])
+
+  if (cachedKnownFollowers && shouldShowKnownFollowers(cachedKnownFollowers)) {
+    return (
+      <KnownFollowersInner
+        profile={profile}
+        cachedKnownFollowers={cachedKnownFollowers}
+        moderationOpts={moderationOpts}
+        onLinkPress={onLinkPress}
+        minimal={minimal}
+        showIfEmpty={showIfEmpty}
+        followedByDisplay={followedByDisplay}
+      />
+    )
+  }
+
+  return <EmptyFallback show={showIfEmpty} />
+}
+
+function KnownFollowersInner({
+  profile,
+  moderationOpts,
+  cachedKnownFollowers,
+  onLinkPress,
+  minimal,
+  showIfEmpty,
+  followedByDisplay,
+}: {
+  profile: bsky.profile.AnyProfileView
+  moderationOpts: ModerationOpts
+  cachedKnownFollowers: AppBskyActorDefs.KnownFollowers
+  onLinkPress?: LinkProps['onPress']
+  minimal?: boolean
+  showIfEmpty?: boolean
+  followedByDisplay: FollowedByMetricsDisplay
+}) {
+  const t = useTheme()
+  const {t: l} = useLingui()
+  const enableSquareAvatars = useEnableSquareAvatars()
+
+  const textStyle = [a.text_sm, a.leading_snug, t.atoms.text_contrast_medium]
+  const showText = shouldShowFollowedByText(followedByDisplay)
+
+  const slice = cachedKnownFollowers.followers.slice(0, 3).map(f => {
+    const moderation = moderateProfile(f, moderationOpts)
+    return {
+      profile: {
+        ...f,
+        displayName: sanitizeDisplayName(
+          f.displayName || f.handle,
+          moderation.ui('displayName'),
+        ),
+      },
+      moderation,
+    }
+  })
+
+  // Does not have blocks applied. Always >= slices.length
+  const serverCount = cachedKnownFollowers.count
+
+  /*
+   * We check above too, but here for clarity and a reminder to _check for
+   * valid indices_
+   */
+  if (slice.length === 0) return <EmptyFallback show={showIfEmpty} />
+
+  const SIZE = minimal ? AVI_SIZE_SMALL : AVI_SIZE
+  const dim = SIZE + AVI_BORDER * 2
+  const radius = avatarBorderRadius(SIZE, enableSquareAvatars)
+  const overflowCount = serverCount - slice.length
+  const showOverflowCount = shouldShowFollowedByOverflowCount(
+    followedByDisplay,
+    serverCount,
+    slice.length,
+  )
+  const showOverflowPlus = shouldShowFollowedByOverflowPlus(
+    followedByDisplay,
+    serverCount,
+    slice.length,
+  )
+  const showEndCap = showOverflowCount || showOverflowPlus
+
+  return (
+    <Link
+      label={l`Press to view followers of this account that you also follow`}
+      onPress={onLinkPress}
+      to={makeProfileLink(profile, 'known-followers')}
+      style={[
+        a.max_w_full,
+        a.flex_row,
+        minimal ? a.gap_sm : a.gap_md,
+        a.align_center,
+        {marginLeft: -AVI_BORDER},
+      ]}>
+      {({hovered, pressed}) => (
+        <>
+          <View
+            style={[
+              a.flex_row,
+              a.align_center,
+              {
+                height: dim,
+              },
+              pressed && {
+                opacity: 0.5,
+              },
+            ]}>
+            {slice.map(({profile: prof, moderation}, i) => (
+              <View
+                key={prof.did}
+                style={[
+                  {
+                    borderWidth: AVI_BORDER,
+                    borderColor: t.atoms.bg.backgroundColor,
+                    width: dim,
+                    height: dim,
+                    borderRadius: radius,
+                    zIndex: slice.length - i + (showEndCap ? 1 : 0),
+                    marginLeft: i > 0 ? -8 : 0,
+                    overflow: 'hidden',
+                  },
+                ]}>
+                <UserAvatar
+                  size={SIZE}
+                  avatar={prof.avatar}
+                  moderation={moderation.ui('avatar')}
+                  type={prof.associated?.labeler ? 'labeler' : 'user'}
+                  noBorder
+                />
+              </View>
+            ))}
+            {showEndCap ? (
+              <View
+                style={[
+                  a.align_center,
+                  a.justify_center,
+                  {
+                    borderWidth: AVI_BORDER,
+                    borderColor: t.atoms.bg.backgroundColor,
+                    width: dim,
+                    height: dim,
+                    borderRadius: radius,
+                    marginLeft: -8,
+                    zIndex: 0,
+                    backgroundColor: t.atoms.text_contrast_low.color,
+                  },
+                ]}>
+                {showOverflowCount && overflowCount > 0 ? (
+                  <Text
+                    style={[
+                      minimal ? a.text_xs : a.text_sm,
+                      a.font_semi_bold,
+                      a.leading_snug,
+                      {color: 'white'},
+                    ]}>
+                    <Trans comment="Additional known followers not shown as avatars, e.g. +3">
+                      +{overflowCount}
+                    </Trans>
+                  </Text>
+                ) : (
+                  <Plus
+                    fill="white"
+                    width={minimal ? 12 : 16}
+                    height={minimal ? 12 : 16}
+                  />
+                )}
+              </View>
+            ) : null}
+          </View>
+
+          {showText ? (
+            <Text
+              style={[
+                a.flex_shrink,
+                textStyle,
+                hovered && {
+                  textDecorationLine: 'underline',
+                  textDecorationColor: t.atoms.text_contrast_medium.color,
+                },
+                pressed && {
+                  opacity: 0.5,
+                },
+              ]}
+              numberOfLines={2}>
+              {slice.length >= 2 ? (
+                // 2-n followers, including blocks
+                // only 2
+                serverCount > 2 ? (
+                  <Trans>
+                    Followed by{' '}
+                    <Text emoji key={slice[0].profile.did} style={textStyle}>
+                      {slice[0].profile.displayName}
+                    </Text>
+                    ,{' '}
+                    <Text emoji key={slice[1].profile.did} style={textStyle}>
+                      {slice[1].profile.displayName}
+                    </Text>
+                    , and{' '}
+                    <Plural
+                      value={serverCount - 2}
+                      one="# other"
+                      other="# others"
+                    />
+                  </Trans>
+                ) : (
+                  <Trans>
+                    Followed by{' '}
+                    <Text emoji key={slice[0].profile.did} style={textStyle}>
+                      {slice[0].profile.displayName}
+                    </Text>{' '}
+                    and{' '}
+                    <Text emoji key={slice[1].profile.did} style={textStyle}>
+                      {slice[1].profile.displayName}
+                    </Text>
+                  </Trans>
+                )
+              ) : serverCount > 1 ? (
+                // 1-n followers, including blocks
+                <Trans>
+                  Followed by{' '}
+                  <Text emoji key={slice[0].profile.did} style={textStyle}>
+                    {slice[0].profile.displayName}
+                  </Text>{' '}
+                  and{' '}
+                  <Plural
+                    value={serverCount - 1}
+                    one="# other"
+                    other="# others"
+                  />
+                </Trans>
+              ) : (
+                // only 1
+                <Trans>
+                  Followed by{' '}
+                  <Text emoji key={slice[0].profile.did} style={textStyle}>
+                    {slice[0].profile.displayName}
+                  </Text>
+                </Trans>
+              )}
+            </Text>
+          ) : null}
+        </>
+      )}
+    </Link>
+  )
+}
+
+function EmptyFallback({show}: {show?: boolean}) {
+  const t = useTheme()
+
+  if (!show) return null
+
+  return (
+    <Text style={[a.text_sm, a.leading_snug, t.atoms.text_contrast_medium]}>
+      <Trans>Not followed by anyone you’re following</Trans>
+    </Text>
+  )
+}

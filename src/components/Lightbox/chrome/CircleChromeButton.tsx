@@ -1,0 +1,81 @@
+import {type ComponentType} from 'react'
+import {
+  Pressable,
+  type PressableProps,
+  type StyleProp,
+  StyleSheet,
+  type TextStyle,
+} from 'react-native'
+import {BlurView} from 'expo-blur'
+
+import {HITSLOP_20} from '#/lib/constants'
+import {useEnableSquareButtons} from '#/state/preferences/enable-square-buttons'
+import {atoms as a} from '#/alf'
+import {type Props as IconProps} from '#/components/icons/common'
+
+type Props = {
+  icon: ComponentType<IconProps>
+  iconStyle?: StyleProp<TextStyle>
+  label: string
+  onPress?: PressableProps['onPress']
+  testID?: string
+} & Omit<
+  PressableProps,
+  | 'onPress'
+  | 'style'
+  | 'testID'
+  | 'accessibilityRole'
+  | 'accessibilityLabel'
+  | 'accessibilityHint'
+>
+
+const SIZE = 32
+const ICON = 18
+
+export function CircleChromeButton({
+  icon: Icon,
+  iconStyle,
+  label,
+  onPress,
+  testID,
+  ...rest
+}: Props) {
+  const enableSquareButtons = useEnableSquareButtons()
+
+  return (
+    <Pressable
+      {...rest}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint=""
+      hitSlop={HITSLOP_20}
+      onPress={onPress}
+      testID={testID}
+      style={({pressed}) => [
+        styles.root,
+        enableSquareButtons ? a.rounded_sm : a.rounded_full,
+        pressed && styles.pressed,
+      ]}>
+      <BlurView intensity={20} tint="dark" style={styles.inner}>
+        <Icon width={ICON} fill="#fff" style={iconStyle} />
+      </BlurView>
+    </Pressable>
+  )
+}
+
+const styles = StyleSheet.create({
+  root: {
+    width: SIZE,
+    height: SIZE,
+    overflow: 'hidden',
+  },
+  inner: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  pressed: {
+    opacity: 0.85,
+  },
+})

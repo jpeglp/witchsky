@@ -1,0 +1,175 @@
+import {type AppBskyLabelerDefs} from '@atproto/api'
+import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query'
+import {z} from 'zod'
+
+import {MAX_LABELERS} from '#/lib/constants'
+import {isAppLabeler} from '#/lib/moderation'
+import {
+  addIgnoredAppLabeler,
+  removeIgnoredAppLabeler,
+} from '#/state/preferences/ignored-app-labelers'
+import {GCTIME, STALE} from '#/state/queries'
+import {
+  preferencesQueryKey,
+  usePreferencesQuery,
+} from '#/state/queries/preferences'
+import {createQueryKey} from '#/state/queries/util'
+import {useAgent} from '#/state/session'
+import {pdsAgent} from '../session/agent'
+
+const labelerInfoQueryKeyRoot = 'labeler-info'
+export const labelerInfoQueryKey = (did: string) => [
+  labelerInfoQueryKeyRoot,
+  did,
+]
+
+const labelersInfoQueryKeyRoot = 'labelers-info'
+export const labelersInfoQueryKey = (dids: string[]) => [
+  labelersInfoQueryKeyRoot,
+  dids.slice().sort(),
+]
+
+const createLabelersDetailedInfoQueryKey = (dids: string[]) =>
+  createQueryKey('labelers-detailed-info', {dids}, {persistedVersion: 1})
+
+export function useLabelerInfoQuery({
+  did,
+  enabled,
+}: {
+  did?: string
+  enabled?: boolean
+}) {
+  const agent = useAgent()
+  return useQuery({
+    enabled: !!did && enabled !== false,
+    queryKey: labelerInfoQueryKey(did as string),
+    queryFn: async () => {
+      const res = await agent.app.bsky.labeler.getServices({
+        dids: [did!],
+        detailed: true,
+      })
+      return res.data.views[0] as AppBskyLabelerDefs.LabelerViewDetailed
+    },
+  })
+}
+
+export function useLabelersInfoQuery({dids}: {dids: string[]}) {
+  const agent = useAgent()
+  return useQuery({
+    enabled: !!dids.length,
+    queryKey: labelersInfoQueryKey(dids),
+    queryFn: async () => {
+      const res = await agent.app.bsky.labeler.getServices({dids})
+      return res.data.views as AppBskyLabelerDefs.LabelerView[]
+    },
+  })
+}
+
+export function useLabelersDetailedInfoQuery({dids}: {dids: string[]}) {
+  const agent = useAgent()
+  return useQuery({
+    enabled: !!dids.length,
+    queryKey: createLabelersDetailedInfoQueryKey(dids),
+    gcTime: GCTIME.INFINITY,
+    staleTime: STALE.MINUTES.ONE,
+    queryFn: async () => {
+      const res = await agent.app.bsky.labeler.getServices({
+        dids,
+        detailed: true,
+      })
+      return res.data.views as AppBskyLabelerDefs.LabelerViewDetailed[]
+    },
+  })
+}
+
+export function useRemoveLabelersMutation() {
+  const queryClient = useQueryClient()
+  const agent = useAgent()
+
+  return useMutation({
+    async mutationFn({dids}: {dids: string[]}) {
+      await Promise.all(dids.map(did => agent.removeLabeler(did)))
+    },
+    async onSuccess() {
+      await queryClient.invalidateQueries({
+        queryKey: preferencesQueryKey,
+      })
+    },
+  })
+}
+
+export function useLabelerSubscriptionMutation() {
+  const queryClient = useQueryClient()
+  const agent = useAgent()
+  const preferences = usePreferencesQuery()
+
+  return useMutation({
+    async mutationFn({did, subscribe}: {did: string; subscribe: boolean}) {
+      // TODO
+      z.object({
+        did: z.string(),
+        subscribe: z.boolean(),
+      }).parse({did, subscribe})
+
+      /**
+       * If a user has invalid/takendown/deactivated labelers, we need to
+       * remove them. We don't have a great way to do this atm on the server,
+       * so we do it here.
+       *
+       * We also need to push validation into this method, since we need to
+       * check {@link MAX_LABELERS} _after_ we've removed invalid or takendown
+       * labelers.
+       */
+      const labelerDids = (
+        preferences.data?.moderationPrefs?.labelers ?? []
+      ).map(l => l.did)
+      const invalidLabelers: string[] = []
+      if (labelerDids.length) {
+        const profiles = await agent.getProfiles({actors: labelerDids})
+        if (profiles.data) {
+          for (const did of labelerDids) {
+            const exists = profiles.data.profiles.find(p => p.did === did)
+            if (exists) {
+              // profile came back but it's not a valid labeler
+              if (exists.associated && !exists.associated.labeler) {
+                invalidLabelers.push(did)
+              }
+            } else {
+              // no response came back, might be deactivated or takendown
+              invalidLabelers.push(did)
+            }
+          }
+        }
+      }
+      if (invalidLabelers.length) {
+        await Promise.all(invalidLabelers.map(did => agent.removeLabeler(did)))
+      }
+
+      if (subscribe) {
+        if (isAppLabeler(did)) {
+          removeIgnoredAppLabeler(did)
+        } else {
+          const labelerCount = labelerDids.length - invalidLabelers.length
+          if (labelerCount >= MAX_LABELERS) {
+            throw new Error('MAX_LABELERS')
+          }
+          await pdsAgent(agent).addLabeler(did)
+        }
+      } else {
+        if (isAppLabeler(did)) {
+          addIgnoredAppLabeler(did)
+          await pdsAgent(agent)
+            .removeLabeler(did)
+            .catch(() => {})
+        } else {
+          await pdsAgent(agent).removeLabeler(did)
+        }
+      }
+    },
+    async onSuccess() {
+      await queryClient.invalidateQueries({
+        queryKey: preferencesQueryKey,
+      })
+    },
+  })
+}

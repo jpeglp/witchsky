@@ -1,0 +1,51 @@
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: ⬇️ Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 5
+
+      - name: 🏗️ Build unsigned IPA (nix devShell)
+        env:
+          IPA_OUT: ${{ runner.temp }}/Witchsky.ipa
+        run: |
+          # A self-hosted runner's step shell doesn't always inherit the nix
+          # profile even when nix is installed -- source it so `nix` is on PATH.
+          if [ -e /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh ]; then
+            . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh
+          elif [ -e "$HOME/.nix-profile/etc/profile.d/nix.sh" ]; then
+            . "$HOME/.nix-profile/etc/profile.d/nix.sh"
+          fi
+          nix --extra-experimental-features 'nix-command flakes' \
+            develop .#ios -c ./scripts/build-ios.sh
+
+      - name: 📦 Stage release artifact
+        run: |
+          mkdir -p "${{ runner.temp }}/release"
+          cp "${{ runner.temp }}/Witchsky.ipa" "${{ runner.temp }}/release/"
+
+      - name: 🚀 Publish Release
+        env:
+          FORGEJO: https://git.pfy.ch
+          REPO: pfych/witchsky
+          TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          # NB: TAG must never equal a branch name -- `github.ref_name` is
+          # "main" on a branch dispatch, which mints a tag `main` that then
+          # shadows the branch and makes workflow_dispatch run a frozen commit.
+          TITLE: iOS unsigned build ${{ github.run_number }} (${{ github.sha }})
+          TAG: ios-build-${{ github.run_number }}
+          SHA: ${{ github.sha }}
+          RELEASE_DIR: ${{ runner.temp }}/release
+          RELEASE_NOTES_ASSISTANT: "false"
+          PRERELEASE: "false"
+          OVERRIDE: "false"
+          HIDE_ARCHIVE_LINK: "false"
+          VERBOSE: "false"
+        run: |
+          curl -sL https://source.mapcomplete.org/actions/forgejo-release/raw/branch/main/forgejo-release.sh -o /tmp/forgejo-release.sh
+          bash /tmp/forgejo-release.sh upload
