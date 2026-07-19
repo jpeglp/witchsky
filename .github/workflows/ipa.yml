@@ -50,7 +50,7 @@ jobs:
         run: npx expo prebuild --platform ios --no-install
 
       - name: 🔧 Copy assets into generated iOS directory
-        run: cp -R assets/. ios/witchsky/
+        run: cp -R assets/. ios/Witchsky/
 
       - name: 📦 Install Pods
         run: |
@@ -64,9 +64,9 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild archive \
-            -workspace ios/witchsky.xcworkspace \
-            -scheme witchsky \
-            -archivePath $RUNNER_TEMP/witchsky.xcarchive \
+            -workspace ios/Witchsky.xcworkspace \
+            -scheme Witchsky \
+            -archivePath $RUNNER_TEMP/Witchsky.xcarchive \
             -sdk iphoneos \
             -arch arm64 \
             -configuration Release \
@@ -83,18 +83,18 @@ jobs:
           path: ${{ runner.temp }}/
 
       - name: 🔍 Debug - list xcarchive contents
-        run: find $RUNNER_TEMP/witchsky.xcarchive -type d
+        run: find $RUNNER_TEMP/Witchsky.xcarchive -type d
 
       - name: 📦 Package unsigned IPA
         run: |
           mkdir -p $RUNNER_TEMP/Payload
-          cp -r "$RUNNER_TEMP/witchsky.xcarchive/Products/Applications/witchsky.app" \
+          cp -r "$RUNNER_TEMP/Witchsky.xcarchive/Products/Applications/Witchsky.app" \
             $RUNNER_TEMP/Payload/
           cd $RUNNER_TEMP
-          zip -r witchsky.ipa Payload/
+          zip -r Witchsky.ipa Payload/
 
       - name: ⬆️ Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: witchsky-ios.ipa
-          path: ${{ runner.temp }}/witchsky.ipa
+          name: Witchsky-ios.ipa
+          path: ${{ runner.temp }}/Witchsky.ipa
