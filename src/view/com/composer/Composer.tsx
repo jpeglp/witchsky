@@ -1792,9 +1792,9 @@ let ComposerPost = memo(function ComposerPost({
   const forceMinHeight = IS_WEB && isTextOnly && isActive
   const selectTextInputPlaceholder = isReply
     ? isFirstPost
-      ? l`Write your reply`
+      ? l`Write your reply!`
       : l`Add another post`
-    : l`What's Happening?`
+    : l`What's happening?`
   const discardPromptControl = Prompt.usePromptControl()
 
   const enableSquareButtons = useEnableSquareButtons()
