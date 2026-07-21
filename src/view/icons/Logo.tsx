@@ -57,7 +57,7 @@ export const Logo = forwardRef(function LogoImpl(props: Props, ref) {
       fill="none"
       // @ts-ignore it's fiiiiine
       ref={ref}
-      viewBox="0 0 512 512"
+    viewBox="0 0 64 57"
       {...rest}
       style={[{width: size, height: size * ratio}, styles]}>
       {gradient && (
