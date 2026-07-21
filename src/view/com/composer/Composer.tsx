@@ -1878,7 +1878,7 @@ let ComposerPost = memo(function ComposerPost({
               ]}>
               <UserAvatar
                 avatar={currentProfile?.avatar}
-                size={42}
+                size={48}
                 type={currentProfile?.associated?.labeler ? 'labeler' : 'user'}
                 style={[a.mt_xs]}
               />
