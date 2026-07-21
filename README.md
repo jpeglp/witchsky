@@ -1,8 +1,8 @@
 # Witchsky Social App Ipa
 
-hey so this isn't entirely just the normal witchsky source, only things i changed was just the "saved" navigation section was changed to bookmarks and the witchsky logo is back to the bluesky logo... sorry i like the butterfly more
+hey so this isn't entirely just the normal witchsky source
 
-anyways if you're all fine with that then you can get the IPA from actions :)
+ if you're all fine with that then you can get the IPA from actions :)
 
 
 
