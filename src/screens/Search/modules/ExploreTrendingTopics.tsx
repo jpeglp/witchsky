@@ -21,7 +21,7 @@ import {SubtleHover} from '#/components/SubtleHover'
 import {Text} from '#/components/Typography'
 import {useAnalytics} from '#/analytics'
 
-const TOPIC_COUNT = 5
+const TOPIC_COUNT = 8
 
 export function ExploreTrendingTopics() {
   const {enabled} = useTrendingConfig()
