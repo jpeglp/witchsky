@@ -674,7 +674,7 @@ let BookmarksMenuItem = ({
           <Bookmark style={[t.atoms.text]} width={iconWidth} />
         )
       }
-      label={_(msg({message: 'Saved', context: 'link to bookmarks screen'}))}
+      label={_(msg({message: 'Bookmarks', context: 'link to bookmarks screen'}))}
       onPress={onPress}
     />
   )
