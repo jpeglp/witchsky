@@ -798,7 +798,7 @@ export function DesktopLeftNav({routeName}: {routeName: string}) {
           />
           <NavItem
             label={l({
-              message: 'Saved',
+              message: 'Bookmarks',
               context: 'link to bookmarks screen',
             })}
             href="/saved"
