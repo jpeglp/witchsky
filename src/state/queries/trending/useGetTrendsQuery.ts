@@ -11,7 +11,7 @@ import {STALE} from '#/state/queries'
 import {usePreferencesQuery} from '#/state/queries/preferences'
 import {useAgent} from '#/state/session'
 
-export const DEFAULT_LIMIT = 5
+export const DEFAULT_LIMIT = 8
 
 export const createGetTrendsQueryKey = () => ['trends']
 
