@@ -1,6 +1,7 @@
 # Witchsky Social App Ipa
 
 hey so this isn't entirely just the normal witchsky source, only things i changed was just the "saved" navigation section was changed to bookmarks and the witchsky logo is back to the bluesky logo... sorry i like the butterfly more
+
 anyways if you're all fine with that then you can get the IPA from actions
 
 Hey, witches! This is the codebase for the Witchsky app, based on [social.daniela.lol](https://github.com/kittibytess/deer-social) and prior [Bluesky](https://github.com/bluesky-social/social-app) forks.
