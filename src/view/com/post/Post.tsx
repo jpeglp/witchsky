@@ -289,6 +289,10 @@ const styles = StyleSheet.create({
     // @ts-ignore web only -prf
     cursor: 'pointer',
   },
+  outerCompact: {
+    paddingTop: 6,
+    paddingBottom: 3,
+  },
   layout: {
     flexDirection: 'row',
     gap: 10,

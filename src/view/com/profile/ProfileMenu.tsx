@@ -1,4 +1,5 @@
-import {memo, useCallback, useMemo, useState} from 'react'
+import {memo, useCallback, useMemo, useRef, useState} from 'react'
+import * as ExpoClipboard from 'expo-clipboard'
 import {type AppBskyActorDefs} from '@atproto/api'
 import {Trans, useLingui} from '@lingui/react/macro'
 import {useNavigation} from '@react-navigation/native'
@@ -11,6 +12,10 @@ import {shareText, shareUrl} from '#/lib/sharing'
 import {sanitizeDisplayName} from '#/lib/strings/display-names'
 import {toShareUrl, toShareUrlBsky} from '#/lib/strings/url-helpers'
 import {type Shadow} from '#/state/cache/types'
+import {
+  toAtprotoExplorerUrl,
+  useAtprotoExplorer,
+} from '#/state/preferences/atproto-explorer'
 import {useConfirmFollowUnfollow} from '#/state/preferences/confirm-follow-unfollow'
 import {
   useDeerVerificationEnabled,
@@ -18,7 +23,8 @@ import {
   useSetDeerVerificationTrust,
 } from '#/state/preferences/deer-verification'
 import {useEnableSquareButtons} from '#/state/preferences/enable-square-buttons'
-import {useShowExternalShareButtons} from '#/state/preferences/external-share-buttons'
+import {useShowClearskyProfileLink} from '#/state/preferences/show-clearsky-profile-link'
+import {useDeerVerificationProfileOverlay} from '#/state/queries/deer-verification'
 import {Nux, useNux, useSaveNux} from '#/state/queries/nuxs'
 import {
   RQKEY as profileQueryKey,
@@ -34,8 +40,9 @@ import {useDialogControl} from '#/components/Dialog'
 import {FollowConfirmationDialog} from '#/components/dialogs/FollowConfirmationDialog'
 import {UserAddRemoveListsDialog} from '#/components/dialogs/lists/UserAddRemoveListsDialog'
 import {StarterPackDialog} from '#/components/dialogs/StarterPackDialog'
-import {ArrowOutOfBoxModified_Stroke2_Corner2_Rounded as ArrowOutOfBoxIcon} from '#/components/icons/ArrowOutOfBox'
+import {At_Stroke2_Corner0_Rounded as AtIcon} from '#/components/icons/At'
 import {ChainLink_Stroke2_Corner0_Rounded as ChainLinkIcon} from '#/components/icons/ChainLink'
+import {ChevronRight_Stroke2_Corner0_Rounded as ChevronRightIcon} from '#/components/icons/Chevron'
 import {CircleCheck_Stroke2_Corner0_Rounded as CircleCheckIcon} from '#/components/icons/CircleCheck'
 import {CircleX_Stroke2_Corner0_Rounded as CircleXIcon} from '#/components/icons/CircleX'
 import {Clipboard_Stroke2_Corner2_Rounded as ClipboardIcon} from '#/components/icons/Clipboard'
@@ -51,10 +58,13 @@ import {
   PersonX_Stroke2_Corner0_Rounded as PersonX,
 } from '#/components/icons/Person'
 import {PlusLarge_Stroke2_Corner0_Rounded as Plus} from '#/components/icons/Plus'
+import {BlueskyIcon} from '#/components/icons/services/Bluesky'
+import {ClearskyIcon} from '#/components/icons/services/Clearsky'
+import {PDSlsIcon} from '#/components/icons/services/PDSls'
 import {SpeakerVolumeFull_Stroke2_Corner0_Rounded as Unmute} from '#/components/icons/Speaker'
-import {SquareArrowTopRight_Stroke2_Corner0_Rounded as ExternalIcon} from '#/components/icons/SquareArrowTopRight'
 import {StarterPack} from '#/components/icons/StarterPack'
 import * as Menu from '#/components/Menu'
+import {CheckboxItemText} from '#/components/Menu/CheckboxItem'
 import {BlockDialog} from '#/components/moderation/BlockDialog'
 import {
   ReportDialog,
@@ -66,7 +76,7 @@ import {useFullVerificationState} from '#/components/verification'
 import {VerificationCreatePrompt} from '#/components/verification/VerificationCreatePrompt'
 import {VerificationRemovePrompt} from '#/components/verification/VerificationRemovePrompt'
 import {useAnalytics} from '#/analytics'
-import {IS_WEB} from '#/env'
+import {IS_IOS, IS_WEB} from '#/env'
 import {useActorStatus, useLiveNowConfig} from '#/features/liveNow'
 import {EditLiveDialog} from '#/features/liveNow/components/EditLiveDialog'
 import {GoLiveDialog} from '#/features/liveNow/components/GoLiveDialog'
@@ -94,7 +104,11 @@ let ProfileMenu = ({
   const isFollowingBlockedAccount = isFollowing && isBlocked
   const isLabeler = !!profile.associated?.labeler
   const [devModeEnabled] = useDevMode()
-  const verification = useFullVerificationState({profile})
+  const copyLinksRef = useRef(false)
+  const profileWithDeerVerification = useDeerVerificationProfileOverlay(profile)
+  const verification = useFullVerificationState({
+    profile: profileWithDeerVerification,
+  })
   const {canGoLive} = useLiveNowConfig()
   const status = useActorStatus(profile)
   const statusNudge = useNux(Nux.LiveNowBetaNudge)
@@ -122,10 +136,16 @@ let ProfileMenu = ({
   const goLiveDisabledDialogControl = useDialogControl()
   const addToStarterPacksDialogControl = useDialogControl()
   const addToListsDialogControl = useDialogControl()
+  const pendingShareAction = useRef<() => void>(() => {})
 
-  const showExternalShareButtons = useShowExternalShareButtons()
+  const atprotoExplorer = useAtprotoExplorer()
+  const showClearskyProfileLink = useShowClearskyProfileLink()
   const openLink = useOpenLink()
 
+  const atprotoExplorerRepositoryUrl = toAtprotoExplorerUrl(
+    atprotoExplorer,
+    `at://${profile.did}`,
+  )
   const showLoggedOutWarning = useMemo(() => {
     return (
       profile.did !== currentAccount?.did &&
@@ -144,13 +164,62 @@ let ProfileMenu = ({
     addToStarterPacksDialogControl.open()
   }, [addToStarterPacksDialogControl, ax])
 
-  const onPressShare = useCallback(() => {
-    void shareUrl(toShareUrl(makeProfileLink(profile)))
+  const onPressShareBsky = useCallback(() => {
+    void shareUrl(toShareUrlBsky(makeProfileLink(profile)))
   }, [profile])
 
-  const onPressShareBsky = useCallback(() => {
-    shareUrl(toShareUrlBsky(makeProfileLink(profile)))
-  }, [profile])
+  const onPressShareHandle = useCallback(() => {
+    void shareText(profile.handle)
+  }, [profile.handle])
+
+  const onPressCopy = useCallback(async () => {
+    const url = toShareUrl(makeProfileLink(profile))
+    if (IS_IOS) {
+      await ExpoClipboard.setUrlAsync(url)
+    } else {
+      await ExpoClipboard.setStringAsync(url)
+    }
+    Toast.show(l`Copied to clipboard`, {type: 'success'})
+  }, [l, profile])
+
+  const onPressCopyBsky = useCallback(async () => {
+    const url = toShareUrlBsky(makeProfileLink(profile))
+    if (IS_IOS) {
+      await ExpoClipboard.setUrlAsync(url)
+    } else {
+      await ExpoClipboard.setStringAsync(url)
+    }
+    Toast.show(l`Copied to clipboard`, {type: 'success'})
+  }, [l, profile])
+
+  const onPressCopyHandle = useCallback(async () => {
+    await ExpoClipboard.setStringAsync(profile.handle)
+    Toast.show(l`Copied to clipboard`, {type: 'success'})
+  }, [l, profile.handle])
+
+  const onPressCopyAtprotoExplorer = useCallback(
+    async (url: string) => {
+      if (IS_IOS) {
+        await ExpoClipboard.setUrlAsync(url)
+      } else {
+        await ExpoClipboard.setStringAsync(url)
+      }
+      Toast.show(l`Copied to clipboard`, {type: 'success'})
+    },
+    [l],
+  )
+
+  const shareOrWarn = useCallback(
+    (action: () => void) => {
+      if (showLoggedOutWarning) {
+        pendingShareAction.current = action
+        loggedOutWarningPromptControl.open()
+      } else {
+        action()
+      }
+    },
+    [loggedOutWarningPromptControl, showLoggedOutWarning],
+  )
 
   const onPressAddRemoveLists = useCallback(() => {
     addToListsDialogControl.open()
@@ -218,8 +287,9 @@ let ProfileMenu = ({
 
   const confirmFollowUnfollow = useConfirmFollowUnfollow()
   const followPromptControl = Prompt.usePromptControl()
-  const [confirmationAction, setConfirmationAction] =
-    useState<'follow' | 'unfollow'>('follow')
+  const [confirmationAction, setConfirmationAction] = useState<
+    'follow' | 'unfollow'
+  >('follow')
 
   const executeFollow = useCallback(async () => {
     try {
@@ -293,15 +363,22 @@ let ProfileMenu = ({
     navigation.navigate('ProfileSearch', {name: profile.handle})
   }, [navigation, profile.handle])
 
-  const onOpenProfileInPdsls = () => {
+  const onOpenProfileInAtprotoExplorer = () => {
     openLink(
-      `https://pdsls.dev/at://${profile.did}/app.bsky.actor.profile/self`,
+      toAtprotoExplorerUrl(
+        atprotoExplorer,
+        `at://${profile.did}/app.bsky.actor.profile/self`,
+      ),
       true,
     )
   }
 
-  const onOpenRepoInPdsls = () => {
-    openLink(`https://pdsls.dev/at://${profile.did}`, true)
+  const onOpenRepoInAtprotoExplorer = () => {
+    openLink(toAtprotoExplorerUrl(atprotoExplorer, `at://${profile.did}`), true)
+  }
+
+  const onOpenProfileInClearsky = () => {
+    openLink(`https://clearsky.app/${profile.did}/profile`, true)
   }
 
   const verificationCreatePromptControl = Prompt.usePromptControl()
@@ -350,71 +427,160 @@ let ProfileMenu = ({
         <Menu.Outer style={{minWidth: 170}}>
           <Menu.Group>
             <Menu.Item
-              testID="profileHeaderDropdownShareBtn"
-              label={IS_WEB ? l`Copy link to profile` : l`Share via...`}
+              testID="profileHeaderDropdownCopyLinkBtn"
+              label={l`Copy link to profile`}
               onPress={() => {
-                if (showLoggedOutWarning) {
-                  loggedOutWarningPromptControl.open()
-                } else {
-                  onPressShare()
-                }
+                shareOrWarn(() => {
+                  void onPressCopy()
+                })
               }}>
               <Menu.ItemText>
-                {IS_WEB ? (
-                  <Trans>Copy link to profile</Trans>
-                ) : (
-                  <Trans>Share via...</Trans>
-                )}
+                <Trans>Copy link to profile</Trans>
               </Menu.ItemText>
-              <Menu.ItemIcon
-                icon={IS_WEB ? ChainLinkIcon : ArrowOutOfBoxIcon}
-              />
+              <Menu.ItemIcon icon={ChainLinkIcon} position="right" />
             </Menu.Item>
-            <Menu.Item
-              testID="profileHeaderDropdownShareBtn"
-              label={
-                IS_WEB ? l`Copy via bsky.app` : l`Share via bsky.app...`
-              }
-              onPress={() => {
-                if (showLoggedOutWarning) {
-                  loggedOutWarningPromptControl.open()
-                } else {
-                  onPressShareBsky()
-                }
-              }}>
-              <Menu.ItemText>
-                {IS_WEB ? (
-                  <Trans>Copy via bsky.app</Trans>
-                ) : (
-                  <Trans>Share via bsky.app...</Trans>
-                )}
-              </Menu.ItemText>
-              <Menu.ItemIcon
-                icon={IS_WEB ? ChainLinkIcon : ArrowOutOfBoxIcon}
-              />
-            </Menu.Item>
-            {showExternalShareButtons && (
-              <>
-                <Menu.Item
-                  testID="profileDropdownOpenProfileInPdsls"
-                  label={l`Open profile in PDSls`}
-                  onPress={onOpenProfileInPdsls}>
+
+            <Menu.Submenu
+              label={l`Share`}
+              trigger={
+                <>
                   <Menu.ItemText>
-                    <Trans>Open profile in PDSls</Trans>
+                    <Trans>Share</Trans>
                   </Menu.ItemText>
-                  <Menu.ItemIcon icon={ExternalIcon} position="right" />
+                  <Menu.ItemIcon icon={ChevronRightIcon} position="right" />
+                </>
+              }>
+              <Menu.Group>
+                <Menu.Item
+                  testID="profileHeaderDropdownShareHandleBtn"
+                  label={l`Handle`}
+                  onPress={() => {
+                    shareOrWarn(() => {
+                      if (IS_WEB || copyLinksRef.current) {
+                        void onPressCopyHandle()
+                      } else {
+                        onPressShareHandle()
+                      }
+                    })
+                  }}>
+                  <Menu.ItemText>
+                    <Trans>Handle</Trans>
+                  </Menu.ItemText>
+                  <Menu.ItemIcon icon={AtIcon} position="right" />
                 </Menu.Item>
                 <Menu.Item
-                  testID="profileDropdownOpenRepoInPdsls"
-                  label={l`Open repo in PDSls`}
-                  onPress={onOpenRepoInPdsls}>
+                  testID="profileHeaderDropdownShareBlueskyBtn"
+                  label={l`Bluesky`}
+                  onPress={() => {
+                    shareOrWarn(() => {
+                      if (!IS_WEB && copyLinksRef.current) {
+                        void onPressCopyBsky()
+                      } else {
+                        onPressShareBsky()
+                      }
+                    })
+                  }}>
                   <Menu.ItemText>
-                    <Trans>Open repo in PDSls</Trans>
+                    <Trans>Bluesky</Trans>
                   </Menu.ItemText>
-                  <Menu.ItemIcon icon={ExternalIcon} position="right" />
+                  <Menu.ItemIcon icon={BlueskyIcon} position="right" />
                 </Menu.Item>
-              </>
-            )}
+                {!IS_WEB && (
+                  <Menu.ContainerItem>
+                    <CheckboxItemText
+                      label={l`Copy instead of opening the share sheet`}
+                      initialValue={copyLinksRef.current}
+                      onChange={value => {
+                        copyLinksRef.current = value
+                      }}>
+                      <Trans>Copy</Trans>
+                    </CheckboxItemText>
+                  </Menu.ContainerItem>
+                )}
+                <Menu.Item
+                  testID="profileHeaderDropdownShareAtprotoExplorerRepositoryBtn"
+                  label={l`Repository`}
+                  onPress={() => {
+                    shareOrWarn(() => {
+                      if (IS_WEB || copyLinksRef.current) {
+                        void onPressCopyAtprotoExplorer(
+                          atprotoExplorerRepositoryUrl,
+                        )
+                      } else {
+                        void shareUrl(atprotoExplorerRepositoryUrl)
+                      }
+                    })
+                  }}>
+                  <Menu.ItemText>
+                    <Trans>Repository</Trans>
+                  </Menu.ItemText>
+                  <Menu.ItemIcon
+                    icon={
+                      atprotoExplorer.name === 'PDSls'
+                        ? PDSlsIcon
+                        : ChainLinkIcon
+                    }
+                    position="right"
+                  />
+                </Menu.Item>
+              </Menu.Group>
+            </Menu.Submenu>
+            <Menu.Submenu
+              label={l`Open`}
+              trigger={
+                <>
+                  <Menu.ItemText>
+                    <Trans>Open</Trans>
+                  </Menu.ItemText>
+                  <Menu.ItemIcon icon={ChevronRightIcon} position="right" />
+                </>
+              }>
+              <Menu.Group>
+                <Menu.Item
+                  testID="profileDropdownOpenRepoInAtprotoExplorer"
+                  label={l`Repository`}
+                  onPress={onOpenRepoInAtprotoExplorer}>
+                  <Menu.ItemText>
+                    <Trans>Repository</Trans>
+                  </Menu.ItemText>
+                  <Menu.ItemIcon
+                    icon={
+                      atprotoExplorer.name === 'PDSls'
+                        ? PDSlsIcon
+                        : ChainLinkIcon
+                    }
+                    position="right"
+                  />
+                </Menu.Item>
+                <Menu.Item
+                  testID="profileDropdownOpenProfileInAtprotoExplorer"
+                  label={l`Profile`}
+                  onPress={onOpenProfileInAtprotoExplorer}>
+                  <Menu.ItemText>
+                    <Trans>Profile</Trans>
+                  </Menu.ItemText>
+                  <Menu.ItemIcon
+                    icon={
+                      atprotoExplorer.name === 'PDSls'
+                        ? PDSlsIcon
+                        : ChainLinkIcon
+                    }
+                    position="right"
+                  />
+                </Menu.Item>
+                {showClearskyProfileLink && (
+                  <Menu.Item
+                    testID="profileDropdownOpenInClearsky"
+                    label={l`Clearsky`}
+                    onPress={onOpenProfileInClearsky}>
+                    <Menu.ItemText>
+                      <Trans>Clearsky</Trans>
+                    </Menu.ItemText>
+                    <Menu.ItemIcon icon={ClearskyIcon} position="right" />
+                  </Menu.Item>
+                )}
+              </Menu.Group>
+            </Menu.Submenu>
             <Menu.Item
               testID="profileHeaderDropdownSearchBtn"
               label={l`Search posts`}
@@ -697,7 +863,9 @@ let ProfileMenu = ({
       {confirmFollowUnfollow && (
         <FollowConfirmationDialog
           control={followPromptControl}
-          displayName={sanitizeDisplayName(profile.displayName || profile.handle)}
+          displayName={sanitizeDisplayName(
+            profile.displayName || profile.handle,
+          )}
           handle={profile.handle}
           actionType={confirmationAction}
           onConfirm={onConfirmFollowAction}
@@ -708,7 +876,7 @@ let ProfileMenu = ({
         control={loggedOutWarningPromptControl}
         title={l`Note about sharing`}
         description={l`This profile is only visible to logged-in users. It won't be visible to people who aren't signed in.`}
-        onConfirm={onPressShare}
+        onConfirm={() => pendingShareAction.current()}
         confirmButtonCta={l`Share anyway`}
       />
       <VerificationCreatePrompt
