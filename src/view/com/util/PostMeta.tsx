@@ -8,16 +8,14 @@ import {useQueryClient} from '@tanstack/react-query'
 import {makeProfileLink} from '#/lib/routes/links'
 import {forceLTR} from '#/lib/strings/bidi'
 import {NON_BREAKING_SPACE} from '#/lib/strings/constants'
-import {getAuthorPrimaryName} from '#/lib/strings/display-names'
+import {sanitizeDisplayName} from '#/lib/strings/display-names'
 import {sanitizeHandle} from '#/lib/strings/handles'
-import {sanitizePronouns} from '#/lib/strings/pronouns'
 import {niceDate} from '#/lib/strings/time'
 import {useProfileShadow} from '#/state/cache/profile-shadow'
-import {useHideDisplayNames} from '#/state/preferences/hide-display-names'
 import {unstableCacheProfileView} from '#/state/queries/profile'
-import {atoms as a, platform, useTheme, web} from '#/alf'
+import {atoms as a, useTheme, web} from '#/alf'
 import {WebOnlyInlineLinkText} from '#/components/Link'
-import {ProfileBadgesFromProfileShadow} from '#/components/ProfileBadges'
+import {ProfileBadges} from '#/components/ProfileBadges'
 import {ProfileHoverCard} from '#/components/ProfileHoverCard'
 import {Text} from '#/components/Typography'
 import {IS_ANDROID} from '#/env'
@@ -31,10 +29,7 @@ interface PostMetaOpts {
   postHref: string
   timestamp: string
   linkDisabled?: boolean
-  narrowLayout?: boolean
-  constrainWidth?: boolean
   showAvatar?: boolean
-  showPronouns?: boolean
   avatarSize?: number
   onOpenAuthor?: () => void
   style?: StyleProp<ViewStyle>
@@ -45,14 +40,8 @@ let PostMeta = (opts: PostMetaOpts): React.ReactNode => {
   const {i18n, _} = useLingui()
 
   const author = useProfileShadow(opts.author)
-  const hideDisplayNames = useHideDisplayNames()
-  const displayName = getAuthorPrimaryName(author, {
-    hideDisplayNames,
-    moderation: opts.moderation?.ui('displayName'),
-  })
+  const displayName = author.displayName || author.handle
   const handle = author.handle
-  // remove dumb typing when you update the atproto api package!!
-  const pronouns = (author as {pronouns?: string})?.pronouns
   const profileLink = makeProfileLink(author)
   const queryClient = useQueryClient()
   const onOpenAuthor = opts.onOpenAuthor
@@ -72,7 +61,7 @@ let PostMeta = (opts: PostMetaOpts): React.ReactNode => {
   return (
     <View
       style={[
-        IS_ANDROID ? a.flex_1 : a.flex_shrink,
+        a.flex_1,
         a.flex_row,
         a.align_center,
         a.pb_xs,
@@ -93,21 +82,9 @@ let PostMeta = (opts: PostMetaOpts): React.ReactNode => {
           />
         </View>
       )}
-      <View
-        style={[
-          a.flex_row,
-          a.align_end,
-          a.flex_shrink,
-          opts.constrainWidth && {flex: 1, minWidth: 0},
-        ]}>
+      <View style={[a.flex_row, a.align_end, a.flex_shrink]}>
         <ProfileHoverCard did={author.did}>
-          <View
-            style={[
-              a.flex_row,
-              a.align_end,
-              a.flex_shrink,
-              opts.constrainWidth && {flex: 1, minWidth: 0},
-            ]}>
+          <View style={[a.flex_row, a.align_end, a.flex_shrink]}>
             <MaybeLinkText
               emoji
               numberOfLines={1}
@@ -120,62 +97,38 @@ let PostMeta = (opts: PostMetaOpts): React.ReactNode => {
                 a.font_semi_bold,
                 t.atoms.text,
                 a.leading_tight,
-                a.flex_shrink,
+                a.flex_shrink_0,
+                {maxWidth: '70%'},
+                web({direction: 'ltr', unicodeBidi: 'isolate'}),
               ]}>
-              {forceLTR(displayName)}
+              {forceLTR(
+                sanitizeDisplayName(
+                  displayName,
+                  opts.moderation?.ui('displayName'),
+                ),
+              )}
             </MaybeLinkText>
-            <ProfileBadgesFromProfileShadow
+            <ProfileBadges
               profile={author}
               size="sm"
-              pdsInteractive={false}
-              style={[
-                a.pl_2xs,
-                a.self_center,
-                {
-                  marginTop: platform({web: 1, ios: 0, android: -1}),
-                },
-              ]}
+              style={[a.pl_2xs, a.self_center]}
             />
-            {!hideDisplayNames && (
-              <MaybeLinkText
-                emoji
-                numberOfLines={1}
-                to={profileLink}
-                label={_(msg`View profile`)}
-                disableMismatchWarning
-                disableUnderline
-                onPress={opts.linkDisabled ? undefined : onBeforePressAuthor}
-                style={[
-                  a.text_md,
-                  t.atoms.text_contrast_medium,
-                  {lineHeight: 1.17},
-                  opts.narrowLayout
-                    ? a.flex_shrink
-                    : [{flexBasis: '30%'}, a.flex_grow, a.flex_shrink_0],
-                  web({maxWidth: 'max-content'}),
-                ]}>
-                {NON_BREAKING_SPACE + sanitizeHandle(handle, '@')}
-              </MaybeLinkText>
-            )}
-            {opts.showPronouns && pronouns && (
-              <WebOnlyInlineLinkText
-                emoji
-                numberOfLines={1}
-                to={profileLink}
-                label={_(msg`View Profile`)}
-                disableMismatchWarning
-                disableUnderline
-                onPress={onBeforePressAuthor}
-                style={[
-                  t.atoms.text_contrast_low,
-                  a.pl_2xs,
-                  a.text_md,
-                  {lineHeight: 1.17},
-                  {flexShrink: 5},
-                ]}>
-                {NON_BREAKING_SPACE + sanitizePronouns(pronouns)}
-              </WebOnlyInlineLinkText>
-            )}
+            <MaybeLinkText
+              emoji
+              numberOfLines={1}
+              to={profileLink}
+              label={_(msg`View profile`)}
+              disableMismatchWarning
+              disableUnderline
+              onPress={opts.linkDisabled ? undefined : onBeforePressAuthor}
+              style={[
+                a.text_md,
+                t.atoms.text_contrast_medium,
+                a.leading_tight,
+                {flexShrink: 10},
+              ]}>
+              {NON_BREAKING_SPACE + sanitizeHandle(handle, '@')}
+            </MaybeLinkText>
           </View>
         </ProfileHoverCard>
 
@@ -192,29 +145,25 @@ let PostMeta = (opts: PostMetaOpts): React.ReactNode => {
                 a.pl_xs,
                 a.text_md,
                 a.leading_tight,
-                IS_ANDROID && !opts.narrowLayout && a.flex_grow,
+                IS_ANDROID && a.flex_grow,
                 a.text_right,
                 t.atoms.text_contrast_medium,
                 web({
                   whiteSpace: 'nowrap',
                 }),
               ]}>
-              {!opts.showPronouns && (
-                <>
-                  {!IS_ANDROID && (
-                    <Text
-                      style={[
-                        a.text_md,
-                        a.leading_tight,
-                        t.atoms.text_contrast_medium,
-                      ]}
-                      accessible={false}>
-                      &middot;{' '}
-                    </Text>
-                  )}
-                  {timeElapsed}
-                </>
+              {!IS_ANDROID && (
+                <Text
+                  style={[
+                    a.text_md,
+                    a.leading_tight,
+                    t.atoms.text_contrast_medium,
+                  ]}
+                  accessible={false}>
+                  &middot;{' '}
+                </Text>
               )}
+              {timeElapsed}
             </MaybeLinkText>
           )}
         </TimeElapsed>
