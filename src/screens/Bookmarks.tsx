@@ -56,7 +56,7 @@ export function BookmarksScreen({}: Props) {
         <Layout.Header.BackButton />
         <Layout.Header.Content>
           <Layout.Header.TitleText>
-            <Trans>Bookmarks</Trans>
+            <Trans>Saved Posts</Trans>
           </Layout.Header.TitleText>
         </Layout.Header.Content>
         <Layout.Header.Slot />
@@ -208,7 +208,7 @@ function BookmarkNotFound({
   const remove = async () => {
     try {
       await bookmark({action: 'delete', uri: post.uri})
-      toast.show(_(msg`Removed from Bookmarks`), {
+      toast.show(_(msg`Removed from saved posts`), {
         type: 'info',
       })
     } catch (err) {
@@ -249,7 +249,7 @@ function BookmarkNotFound({
         </Text>
       </View>
       <Button
-        label={_(msg`Remove from Bookmarks`)}
+        label={_(msg`Remove from saved posts`)}
         size="tiny"
         color="secondary"
         onPress={() => void remove()}>
@@ -289,7 +289,7 @@ function BookmarksEmpty() {
   return (
     <EmptyState
       icon={BookmarkDeleteLarge}
-      message={_(msg`Nothing bookmarked yet`)}
+      message={_(msg`Nothing saved yet`)}
       textStyle={[t.atoms.text_contrast_medium, a.font_medium]}
       button={{
         label: _(msg`Button to go back to the home timeline`),

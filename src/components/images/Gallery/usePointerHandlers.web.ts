@@ -1,5 +1,5 @@
 import {useEffect} from 'react'
-import {type FlatList} from 'react-native'
+import {type FlatList, type ScrollView} from 'react-native'
 
 import {ITEM_GAP} from '#/components/images/Gallery/const'
 import {tween} from '#/components/images/Gallery/tween'
@@ -48,13 +48,15 @@ export function usePointerHandlers({
   scrollTo,
   onSettle,
   imageCount,
+  allowButtonDrag = false,
 }: {
-  flatListRef: React.RefObject<FlatList | null>
+  flatListRef: React.RefObject<FlatList | ScrollView | null>
   itemWidthsRef: React.RefObject<Map<number, number>>
   currentIndexRef: React.RefObject<number>
   scrollTo: (offset: number) => void
   onSettle: (index: number) => void
   imageCount: number
+  allowButtonDrag?: boolean
 }) {
   useEffect(() => {
     if (imageCount <= 1) return
@@ -90,15 +92,15 @@ export function usePointerHandlers({
       if (!(target instanceof Element)) return
 
       /*
-       * Don't hijack form controls (volume slider, etc.) or buttons. Without
-       * this, preventDefault breaks range inputs and drag becomes a carousel
-       * swipe instead of adjusting the control.
+       * Don't hijack form controls (volume slider, etc.). Image carousel tiles
+       * are exposed as accessible buttons, so that carousel opts into using
+       * buttons as drag surfaces. Post-drag click suppression below keeps a
+       * swipe from activating the image.
        */
-      if (
-        target.closest(
-          'input, textarea, select, button, [role="slider"], [role="button"], [data-no-carousel-drag]',
-        )
-      ) {
+      const blockedSelector = allowButtonDrag
+        ? 'input, textarea, select, [role="slider"], [data-no-carousel-drag]'
+        : 'input, textarea, select, button, [role="slider"], [role="button"], [data-no-carousel-drag]'
+      if (target.closest(blockedSelector)) {
         return
       }
 
@@ -357,5 +359,6 @@ export function usePointerHandlers({
     scrollTo,
     onSettle,
     imageCount,
+    allowButtonDrag,
   ])
 }

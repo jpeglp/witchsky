@@ -5,7 +5,7 @@ import {type AppBskyEmbedImages} from '@atproto/api'
 
 import {atoms as a, useBreakpoints} from '#/alf'
 import {type Dimensions} from '#/components/Lightbox/types'
-import {PostEmbedViewContext} from '#/components/Post/Embed/types'
+import {type PostEmbedViewContext} from '#/components/Post/Embed/types'
 import {GalleryItem} from './ImageLayoutGridItem'
 
 interface ImageLayoutGridProps {
@@ -28,14 +28,12 @@ export function ImageLayoutGrid({
   ...props
 }: ImageLayoutGridProps) {
   const {gtMobile} = useBreakpoints()
-  const isWithinQuote =
-    isWithinQuoteProp ??
-    props.viewContext === PostEmbedViewContext.FeedEmbedRecordWithMedia
+  const isWithinQuote = isWithinQuoteProp
   const gap = isWithinQuote ? (gtMobile ? a.gap_xs : a.gap_2xs) : a.gap_xs
 
   return (
-    <View style={style}>
-      <View style={[gap, a.rounded_md, a.overflow_hidden]}>
+    <View style={[a.w_full, style]}>
+      <View style={[a.w_full, gap, a.rounded_md, a.overflow_hidden]}>
         <ImageLayoutGridInner
           {...props}
           gap={gap}

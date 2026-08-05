@@ -1,10 +1,4 @@
-# Witchsky Social App Ipa
-
-hey so this isn't entirely just the normal witchsky source
-
- if you're all fine with that then you can get the IPA from actions :)
-
-
+# Witchsky Social App 🧙 (alpha)
 
 Hey, witches! This is the codebase for the Witchsky app, based on [social.daniela.lol](https://github.com/kittibytess/deer-social) and prior [Bluesky](https://github.com/bluesky-social/social-app) forks.
 
@@ -28,7 +22,7 @@ alt="Get it on Obtainium" height="54" /></a> -->
 - You can change "post" to any phrase you want in the UI
 - Choose between sharing witchsky.app or bsky.app links
 - Embed player works with [stream.place](https://stream.place/) links!
-- Open posts in PDSls and original bridged fedi instances 
+- Open posts in a configurable ATProto explorer, Skythread, and original bridged fedi instances
 - You can delete and redraft (basically edit!) posts
 - Better defaults (alt text required 😉 autoplay off 🫨)
 - Read your chat threads with deleted/deactivated accounts
@@ -48,10 +42,8 @@ alt="Get it on Obtainium" height="54" /></a> -->
 These are all available as options in the Runes sub-page of the app's settings.
 
 - Menus
-  - Use handles in profile links instead of DIDs
-  - Show "Open original post" and "Open post in PDSls" buttons
-  - On non-bsky.social handles, show a link to that URL
-  - Only show URL on handles with working links
+  - Configure the ATProto explorer name and link used by Open menus
+  - Show Clearsky in profile Open menu
 - Badges
   - Trusted verifiers
     - Use own selection of trusted verifiers
@@ -74,8 +66,14 @@ These are all available as options in the Runes sub-page of the app's settings.
     - Disable top-of-feed button
     - Show plus icon on unfollowed feed avatars
     - Hide posts that cannot be replied to from feeds
+  - Profiles
+    - Use handles in profile links instead of DIDs
+    - On non-bsky.social handles, show a link to that URL
+    - Only show URL on handles with working links
+    - Show Germ DM button on profiles
+    - Show standard profile UI on labeler accounts
+    - Disable similar accounts recommendations
   - Redirect through go.bsky.app
-  - Disable similar accounts recommendations
   - Hide follow button on posts and scrolled profile header
   - Confirm before following or unfollowing
   - Disable verify email reminder
