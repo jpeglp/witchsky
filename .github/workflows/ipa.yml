@@ -49,8 +49,39 @@ jobs:
       - name: 🏗️ Prebuild (generate native iOS project via Expo)
         run: npx expo prebuild --platform ios --no-install
 
-      - name: 🔧 Copy assets into generated iOS directory
-        run: cp -R assets/. ios/Witchsky/
+      # Copy assets but exclude .aiff from being placed where Xcode might try to compile them.
+      - name: 🔧 Copy assets into generated iOS directory (exclude .aiff)
+        run: |
+          # copy everything except .aiff files into the iOS project root
+          rsync -av --exclude='*.aiff' assets/ ios/Witchsky/
+          # ensure audio files are placed in Resources (Xcode will treat these as resources instead of compile inputs)
+          mkdir -p ios/Witchsky/Resources
+          rsync -av --include='*.aiff' --exclude='*' assets/ ios/Witchsky/Resources/
+
+      # Patch the generated Podfile to force SWIFT_VERSION and avoid treating pod warnings as errors.
+      - name: 🔧 Patch generated ios/Podfile to set SWIFT_VERSION for pods
+        run: |
+          set -e
+          PODFILE="ios/Podfile"
+          if [ -f "$PODFILE" ]; then
+            echo "Appending post_install hook to $PODFILE"
+            cat >> "$PODFILE" <<'RUBY'
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      # Force pods to use a compatible Swift version (adjust if you use a different Swift version)
+      config.build_settings['SWIFT_VERSION'] = '5.9'
+      # Prevent pods from failing the build due to treating warnings as errors
+      config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
+    end
+  end
+end
+
+RUBY
+          else
+            echo "$PODFILE not present; skipping Podfile patch"
+          fi
 
       - name: 📦 Install Pods
         run: |
@@ -59,6 +90,14 @@ jobs:
 
       - name: 🔍 Debug - list ios directory
         run: ls -la ios/
+
+      # Additional safety: list any .aiff files in ios and optionally delete them if still present.
+      - name: 🔧 Ensure no stray .aiff are mis-processed
+        run: |
+          echo "Listing .aiff files found under ios/:"
+          find ios -name '*.aiff' -print || true
+          # If you prefer to remove them in CI, uncomment the following line:
+          # find ios -name '*.aiff' -delete || true
 
       - name: 🔨 Archive (no code signing)
         run: |
