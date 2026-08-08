@@ -23,6 +23,7 @@ module.exports = function (_config) {
   const IS_DEV = !IS_TESTFLIGHT && !IS_PRODUCTION
 
   const ASSOCIATED_DOMAINS = [
+    'applinks:tenna.party',
     'applinks:witchsky.app',
     'applinks:deer.social',
     'applinks:bsky.app',
@@ -55,9 +56,9 @@ module.exports = function (_config) {
   return {
     expo: {
       version: VERSION,
-      name: 'Witchsky',
+      name: 'tenna.party',
       slug: 'witchsky',
-      scheme: ['bluesky', 'witchsky', 'app.witchsky'],
+      scheme: ['bluesky', 'tenna', 'party.tenna'],
       // owner: 'blueskysocial',
       // owner: 'neema.brown',
       runtimeVersion: {
@@ -65,10 +66,11 @@ module.exports = function (_config) {
       },
       icon: './assets/app-icons/ios_icon_legacy_light.png',
       userInterfaceStyle: 'automatic',
-      primaryColor: '#ED5345',
+      primaryColor: '#EDBC1A',
+      newArchEnabled: true,
       ios: {
         supportsTablet: false,
-        bundleIdentifier: process.env.WITCHSKY_BUNDLE_ID || 'app.witchsky',
+        bundleIdentifier: process.env.WITCHSKY_BUNDLE_ID || 'party.tenna',
         appleTeamId: process.env.WITCHSKY_APPLE_TEAM_ID || 'B3LX46C5HS',
         buildNumber: IOS_BUILD_NUMBER,
         config: {
@@ -87,7 +89,7 @@ module.exports = function (_config) {
             'Used to save images to your library.',
           NSPhotoLibraryUsageDescription:
             'Used for profile pictures, posts, and other kinds of content',
-          CFBundleSpokenName: 'witchsky.app',
+          CFBundleSpokenName: 'tenna.party',
           CFBundleLocalizations: [
             'en',
             'an',
@@ -208,7 +210,7 @@ module.exports = function (_config) {
         adaptiveIcon: {
           foregroundImage: './assets/icon-android-foreground.png',
           monochromeImage: './assets/icon-android-monochrome.png',
-          backgroundColor: '#ED5345',
+          backgroundColor: '#EDBC1A',
         },
         googleServicesFile: './google-services.json',
         package: process.env.WITCHSKY_BUNDLE_ID || 'app.witchsky',
@@ -220,6 +222,10 @@ module.exports = function (_config) {
             action: 'VIEW',
             autoVerify: true,
             data: [
+              {
+                scheme: 'https',
+                host: 'tenna.party',
+              },
               {
                 scheme: 'https',
                 host: 'witchsky.app',
@@ -327,7 +333,7 @@ module.exports = function (_config) {
           'expo-notifications',
           {
             icon: './assets/icon-android-notification.png',
-            color: '#ED5345',
+            color: '#EDBC1A',
             sounds: PLATFORM === 'ios' ? ['assets/dm.aiff'] : ['assets/dm.mp3'],
           },
         ],
@@ -344,7 +350,6 @@ module.exports = function (_config) {
         './plugins/withAndroidManifestFCMIconPlugin.js',
         './plugins/withAndroidManifestIntentQueriesPlugin.js',
         './plugins/withAndroidStylesAccentColorPlugin.js',
-        './plugins/withAndroidNoJitpackPlugin.js',
         './plugins/shareExtension/withShareExtensions.js',
         './plugins/notificationsExtension/withNotificationsExtension.js',
         [
@@ -529,25 +534,25 @@ module.exports = function (_config) {
                 // appExtensions: [
                 //   {
                 //     targetName: 'Share-with-Bluesky',
-                //     bundleIdentifier: env.WITCHSKY_BUNDLE_ID ? `${env.WITCHSKY_BUNDLE_ID}.Share-with-Bluesky` : 'app.witchsky.Share-with-Bluesky',
+                //     bundleIdentifier: env.WITCHSKY_BUNDLE_ID ? `${env.WITCHSKY_BUNDLE_ID}.Share-with-Bluesky` : 'party.tenna.Share-with-Bluesky',
                 //     entitlements: {
                 //       'com.apple.security.application-groups': [
-                //         process.env.WITCHSKY_BUNDLE_ID ? `group.${process.env.WITCHSKY_BUNDLE_ID}` : 'group.app.witchsky',
+                //         process.env.WITCHSKY_BUNDLE_ID ? `group.${process.env.WITCHSKY_BUNDLE_ID}` : 'party.tenna.witchsky',
                 //       ],
                 //     },
                 //   },
                 //   {
                 //     targetName: 'BlueskyNSE',
-                //     bundleIdentifier: process.env.WITCHSKY_BUNDLE_ID ? `${process.env.WITCHSKY_BUNDLE_ID}.BlueskyNSE` : 'app.witchsky.BlueskyNSE',
+                //     bundleIdentifier: process.env.WITCHSKY_BUNDLE_ID ? `${process.env.WITCHSKY_BUNDLE_ID}.BlueskyNSE` : 'party.tenna.BlueskyNSE',
                 //     entitlements: {
                 //       'com.apple.security.application-groups': [
-                //         process.env.WITCHSKY_BUNDLE_ID ? `group.${process.env.WITCHSKY_BUNDLE_ID}` : 'group.app.witchsky',
+                //         process.env.WITCHSKY_BUNDLE_ID ? `group.${process.env.WITCHSKY_BUNDLE_ID}` : 'party.tenna.witchsky',
                 //       ],
                 //     },
                 //   },
                 //   {
                 //     targetName: 'BlueskyClip',
-                //     bundleIdentifier: process.env.WITCHSKY_BUNDLE_ID ? `${process.env.WITCHSKY_BUNDLE_ID}.AppClip` : 'app.witchsky.AppClip',
+                //     bundleIdentifier: process.env.WITCHSKY_BUNDLE_ID ? `${process.env.WITCHSKY_BUNDLE_ID}.AppClip` : 'party.tenna.AppClip',
                 //   },
                 // ],
               },
