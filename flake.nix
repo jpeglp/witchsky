@@ -112,39 +112,6 @@
                 export GRADLE_OPTS="-Dorg.gradle.project.android.aapt2FromMavenOverride=${ANDROID_SDK_ROOT}/build-tools/35.0.0/aapt2''${GRADLE_OPTS:+ $GRADLE_OPTS}";
               '';
             };
-
-            # iOS unsigned-build toolchain. Deliberately separate from
-            # `default` so an iOS build doesn't drag in the Android SDK/JDK.
-            # Xcode is NOT provided by nix -- install it and select it with
-            # `xcode-select`; everything else (node/pnpm/cocoapods/jq) is here.
-            # Enter with `nix develop .#ios`, then run `./scripts/build-ios.sh`.
-            # mkShellNoCC: do NOT inject nix's C/C++ stdenv toolchain -- Xcode must
-            # build with its own Apple clang + SDK. A nix cc stdenv leaks include
-            # paths/flags that drag nix libc++ into the iOS build and break it.
-            ios = mkShellNoCC {
-              packages =
-                [
-                  nodejs_24
-                  pnpm
-                  cocoapods
-                  ruby_3_3
-                  jq
-                  git
-                  zip
-                ]
-                ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [xcbeautify];
-
-              shellHook = ''
-                # CocoaPods/Ruby abort without a UTF-8 locale.
-                export LANG=en_US.UTF-8
-                export LC_ALL=en_US.UTF-8
-                echo "witchsky iOS build shell"
-                if ! xcode-select -p >/dev/null 2>&1; then
-                  echo "WARNING: Xcode not found -- install it, then: xcode-select -s /Applications/Xcode.app"
-                fi
-                echo "-> build an unsigned .ipa with: ./scripts/build-ios.sh"
-              '';
-            };
           };
         }
     );
