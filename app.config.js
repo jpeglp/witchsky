@@ -56,9 +56,9 @@ module.exports = function (_config) {
   return {
     expo: {
       version: VERSION,
-      name: 'tenna.party',
+      name: 'witchsky',
       slug: 'witchsky',
-      scheme: ['bluesky', 'tenna', 'party.tenna'],
+      scheme: ['bluesky', 'witchsky', 'app.witchsky'],
       // owner: 'blueskysocial',
       // owner: 'neema.brown',
       runtimeVersion: {
@@ -70,7 +70,7 @@ module.exports = function (_config) {
       newArchEnabled: true,
       ios: {
         supportsTablet: false,
-        bundleIdentifier: process.env.WITCHSKY_BUNDLE_ID || 'party.tenna',
+        bundleIdentifier: process.env.WITCHSKY_BUNDLE_ID || 'app.witchsky',
         appleTeamId: process.env.WITCHSKY_APPLE_TEAM_ID || 'B3LX46C5HS',
         buildNumber: IOS_BUILD_NUMBER,
         config: {
@@ -89,7 +89,7 @@ module.exports = function (_config) {
             'Used to save images to your library.',
           NSPhotoLibraryUsageDescription:
             'Used for profile pictures, posts, and other kinds of content',
-          CFBundleSpokenName: 'tenna.party',
+          CFBundleSpokenName: 'witchsky.app',
           CFBundleLocalizations: [
             'en',
             'an',
@@ -222,10 +222,6 @@ module.exports = function (_config) {
             action: 'VIEW',
             autoVerify: true,
             data: [
-              {
-                scheme: 'https',
-                host: 'tenna.party',
-              },
               {
                 scheme: 'https',
                 host: 'witchsky.app',

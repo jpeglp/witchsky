@@ -11,12 +11,6 @@ dist-build-android-sideload: intl build-android-sideload
 [group('dist')]
 dist-build-android-gradle: intl build-android-gradle
 
-# unsigned iOS .ipa; run inside `nix develop .#ios` on a Mac with Xcode.
-# the script handles intl:build/prebuild/pods itself, so no chained deps here.
-[group('dist')]
-dist-build-ios:
-    ./scripts/build-ios.sh
-
 [group('build')]
 intl:
     pnpm intl:build
@@ -36,7 +30,7 @@ build-android-sideload: prebuild-android
 [group('build')]
 [working-directory: 'android']
 build-android-gradle: prebuild-android
-    ./gradlew app:assembleRelease
+    ./gradlew --no-daemon app:assembleRelease
 
 [group('build')]
 postbuild-web:
